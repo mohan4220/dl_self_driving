@@ -46,13 +46,17 @@ class Pipeline:
         self._weather = WeatherInfo()
         self._signals = SignalInfo()
         self._prev_dist: dict[int, float] = {}
-        self._prev_t = 0.0
+        self._prev_t: float | None = None
         self._prev_steer = 0.0
+        self._sim = False           # set by run(): only build_grid when --sim needs it
         self.ego = EgoState()
 
     def process(self, idx: int, t: float, frame: np.ndarray) -> FrameState:
         cfg = self.cfg
-        dt = max(1e-3, t - self._prev_t)
+        if self._prev_t is None:
+            dt = 1.0 / cfg["video"]["out_fps"]     # nominal interval: no prior frame yet
+        else:
+            dt = max(1e-3, t - self._prev_t)
         self._prev_t = t
 
         # --- weather: classify rarely, score every frame ---
@@ -81,8 +85,11 @@ class Pipeline:
         self._signals = read_signals(img, state.objects, self.signs, self._signals, cfg)
         state.signals = self._signals
 
-        # --- world model ---
-        state.bev = build_grid(state, cfg)
+        # --- world model --- (only needed for the --sim top-down window;
+        # render_sim rasterises straight from state.objects, nothing else
+        # reads state.bev)
+        if self._sim:
+            state.bev = build_grid(state, cfg)
 
         # --- decide ---
         state.decision = self.planner.step(state)
@@ -99,12 +106,22 @@ class Pipeline:
             offset, heading = 0.0, 0.0
             state.decision.log.append("PERCEPTION DEGRADED - HOLDING STEER")
 
+        # A CHANGING manoeuvre biases the pure-pursuit aim point sideways by
+        # up to a full lane width, signed by direction. Convention: offset_m
+        # > 0 is ego RIGHT of lane centre, and a positive offset yields
+        # negative (left) steering -- so moving left means biasing offset
+        # positive (makes pure pursuit think we're further right than we
+        # are, so it steers left to "correct").
+        if level != 2 and state.decision.lane_change_progress > 0:
+            sign = 1.0 if state.decision.indicator == "left" else -1.0
+            offset += sign * cfg["camera"]["lane_width_m"] * state.decision.lane_change_progress
+
         if level == 2:
             steer = self._prev_steer * 0.85          # decay toward straight
         else:
             steer = pure_pursuit(
                 offset, heading,
-                lookahead_for(state.decision.target_speed, cfg),
+                lookahead_for(self.ego.v_kmh, cfg),
                 cfg["camera"]["wheelbase_m"],
                 cfg["control"]["max_steer_deg"],
             )
@@ -126,6 +143,7 @@ class Pipeline:
         max_frames: int | None = None,
     ) -> dict:
         cfg = self.cfg
+        self._sim = sim
         reader = VideoReader(video_path, stride=cfg["video"]["stride"], max_frames=max_frames)
         size = (reader.width, reader.height)
 
@@ -139,7 +157,8 @@ class Pipeline:
                 state = self.process(idx, t, frame)
                 total_ms += (time.perf_counter() - t0) * 1000
 
-                vw.write(render(state, cfg))
+                overlay = render(state, cfg)
+                vw.write(overlay)
                 lw.write(state)
                 frames += 1
                 states[state.decision.fsm_state] = (
@@ -147,7 +166,7 @@ class Pipeline:
                 )
 
                 if sim:
-                    cv2.imshow("annotated", render(state, cfg))
+                    cv2.imshow("annotated", overlay)
                     cv2.imshow("simulator", render_sim(state, self.ego, cfg))
                     if cv2.waitKey(1) == 27:
                         break
