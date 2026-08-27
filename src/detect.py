@@ -35,25 +35,66 @@ def bbox_bottom_centre(bbox: tuple[int, int, int, int]) -> tuple[float, float]:
     return ((x1 + x2) / 2.0, float(y2))
 
 
+TTC_EMA_ALPHA = 0.3   # smoothing factor for per-track distance before differencing
+
+
+class DistMemo(dict):
+    """The distance memo `update_ttc` returns and consumes.
+
+    Behaves exactly like `dict[int, float]` (the raw distance per track id,
+    same as before this fix) for every existing caller and test. It also
+    carries a hidden `smoothed` attribute with the EMA-smoothed distance per
+    track id, used internally to debounce TTC differencing. Instance
+    attributes do not participate in dict equality, so `DistMemo({1: 2.0})
+    == {1: 2.0}` is still True — no plumbing changes needed at any call site.
+    """
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.smoothed: dict[int, float] = {}
+
+
 def update_ttc(
     tracks: list[Track], prev_dist: dict[int, float], dt: float
 ) -> dict[int, float]:
     """Set `ttc_s` on each track from how fast its distance is shrinking.
 
+    A raw box-bottom edge jitters by a few pixels between frames; at typical
+    frame intervals (~0.07s) that jitter differences into tens of m/s of
+    spurious "closing" speed for an object that is not actually closing. To
+    stop that, distance is smoothed per track id with an EMA (alpha=0.3)
+    before differencing. The smoothing state rides along as a hidden
+    attribute on the returned memo (see `DistMemo`) rather than as a new
+    parameter, so the dict every caller already threads through the
+    pipeline is unaffected in shape or equality.
+
     Returns the distance memo to pass in on the next frame. Tracks with an
-    unknown distance are excluded so they cannot poison the next frame.
+    unknown distance, or an unassociated (-1) id, are excluded so they
+    cannot poison the next frame.
     """
-    new: dict[int, float] = {}
+    prev_smoothed = getattr(prev_dist, "smoothed", {})
+    new = DistMemo()
     for t in tracks:
-        if not np.isfinite(t.dist_m):
+        if not np.isfinite(t.dist_m) or t.id < 0:
             continue
         new[t.id] = t.dist_m
-        was = prev_dist.get(t.id)
-        if was is None or dt <= 0:
+
+        was_smoothed = prev_smoothed.get(t.id)
+        if was_smoothed is None:
+            smoothed_now = t.dist_m               # nothing to smooth against yet
+            anchor = prev_dist.get(t.id)           # fall back to the raw memo
+        else:
+            smoothed_now = (
+                TTC_EMA_ALPHA * t.dist_m + (1.0 - TTC_EMA_ALPHA) * was_smoothed
+            )
+            anchor = was_smoothed
+        new.smoothed[t.id] = smoothed_now
+
+        if anchor is None or dt <= 0:
             continue
-        closing = (was - t.dist_m) / dt          # m/s, positive = approaching
+        closing = (anchor - smoothed_now) / dt   # m/s, positive = approaching
         if closing > 0.1:
-            t.ttc_s = t.dist_m / closing
+            t.ttc_s = smoothed_now / closing
     return new
 
 
@@ -79,13 +120,25 @@ class Detector:
         )[0]
 
         out: list[Track] = []
-        if res.boxes is None or res.boxes.id is None:
+        if res.boxes is None:
             return out
+
+        # ByteTrack sometimes finds boxes it cannot associate with an id
+        # (id is None for the whole frame). Fall back to id=-1 rather than
+        # discarding the detections outright: a dropped-to-empty frame is
+        # what clears light_state to "none" and flickers the planner out of
+        # STOP_SIGNAL for a frame. -1 boxes still reach the planner; they
+        # just never accumulate TTC/OCR history (ids can collide frame to
+        # frame), which update_ttc and SignReader both guard against.
+        if res.boxes.id is None:
+            ids = [-1] * len(res.boxes.xyxy)
+        else:
+            ids = res.boxes.id.tolist()
 
         for box, cid, tid, c in zip(
             res.boxes.xyxy.tolist(),
             res.boxes.cls.tolist(),
-            res.boxes.id.tolist(),
+            ids,
             res.boxes.conf.tolist(),
         ):
             name = COCO_NAMES.get(int(cid))

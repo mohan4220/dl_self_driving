@@ -91,7 +91,13 @@ class SignReader:
     def read_speed_limit(
         self, bgr: np.ndarray, bbox: tuple[int, int, int, int], track_id: int
     ) -> int | None:
-        if track_id in self._cache:
+        # An id of -1 means the tracker could not associate this box with a
+        # persistent track (see Detector.track); different crops can share
+        # that id from one frame to the next, so caching by it would either
+        # leak one sign's reading onto an unrelated sign or, once cached,
+        # permanently suppress OCR for every future -1 detection.
+        cacheable = track_id >= 0
+        if cacheable and track_id in self._cache:
             return self._cache[track_id]
 
         x1, y1, x2, y2 = bbox
@@ -107,7 +113,8 @@ class SignReader:
 
         crop = cv2.resize(crop, None, fx=3, fy=3, interpolation=cv2.INTER_CUBIC)
         val = self._ocr_number(crop)
-        self._cache[track_id] = val        # cache misses too: do not retry forever
+        if cacheable:
+            self._cache[track_id] = val    # cache misses too: do not retry forever
         return val
 
 
@@ -121,13 +128,24 @@ def read_signals(
     """Collect light state, signs, and the active speed limit for this frame."""
     out = SignalInfo(speed_limit_kmh=prev.speed_limit_kmh)
 
-    lights = [t for t in tracks if t.cls == "traffic_light"]
+    # Only a light that is actually relevant to us -- close enough to matter
+    # and roughly in front of us, not off to the side or a block away --
+    # gets to set light_state. `annotate_distances` runs before this stage
+    # in the pipeline, so dist_m/lateral_m are already populated. Without
+    # this gate any traffic light anywhere in frame (including a distant
+    # cross-street light) could stop the car.
+    p = cfg["planner"]
+    lane_corridor_m = 2 * cfg["camera"]["lane_width_m"]
+    lights = [
+        t for t in tracks
+        if t.cls == "traffic_light"
+        and np.isfinite(t.dist_m) and t.dist_m < p["stop_line_dist_m"]
+        and np.isfinite(t.lateral_m) and abs(t.lateral_m) < lane_corridor_m
+    ]
     if lights:
-        # The nearest light governs us, and nearest means largest on screen.
-        nearest = max(
-            lights, key=lambda t: (t.bbox[2] - t.bbox[0]) * (t.bbox[3] - t.bbox[1])
-        )
+        nearest = min(lights, key=lambda t: t.dist_m)
         out.light_state = classify_light(bgr, nearest.bbox)
+        out.light_dist_m = nearest.dist_m
 
     for t in tracks:
         if t.cls == "stop_sign":
