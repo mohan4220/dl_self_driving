@@ -1,27 +1,30 @@
 {
   "quantization": {
-    "int8_ms": 204.0565957504441,
-    "fp32_ms": 462.12048975212383,
-    "speedup": 2.264668231147427,
-    "da_iou": 0.509915546807822,
-    "ll_iou": 0.9552065100598648,
-    "frames": 4
+    "int8_ms": 376.3892443336469,
+    "fp32_ms": 789.0508889989482,
+    "speedup": 2.0963693858889894,
+    "da_iou": 0.9933374161135154,
+    "ll_iou": 0.9576381518068814,
+    "frames": 12
   },
   "enhancement": {
     "fog": {
-      "raw_visibility": 0.8052162137750204,
-      "enhanced_visibility": 0.8754945727000252
+      "raw_visibility": 0.991680889329309,
+      "enhanced_visibility": 0.9698691987278223
     },
     "night": {
-      "raw_visibility": 0.8052162137750204,
-      "enhanced_visibility": 0.8066131444203757
+      "raw_visibility": 0.991680889329309,
+      "enhanced_visibility": 0.9960981245982299
     },
     "rain": {
-      "raw_visibility": 0.8052162137750204,
-      "enhanced_visibility": 0.8268598471378235
+      "raw_visibility": 0.991680889329309,
+      "enhanced_visibility": 0.9974307106968567
     }
   },
   "states": {
+    "FOLLOW": 137,
+    "PREP_CHANGE_R": 30,
+    "CHANGING": 50,
     "LANE_KEEP": 12
   }
 }

@@ -87,15 +87,67 @@ full throttle while acceleration-limited, then tapering 0.739 → 0.423 → 0.16
 from roughly 44 km/h, a single 5.8% overshoot to 52.88 km/h, settling to
 50.00 km/h by ~18 s with no sustained oscillation.
 
-## 7. Honest limitations
+## 7. Real-footage run
 
-- **No real dashcam footage was available.** Every figure above comes from real
-  BDD100K stills or a synthetic generated clip. Verification against continuous
-  video — in particular ByteTrack id stability under real motion — is pending.
-- **`camera.ipm_src` is uncalibrated.** All distances and angles flow through
-  four trapezoid points that were estimated, not measured, so results are
-  self-consistent but not metrically accurate. `python -m src.bev --video <clip>`
-  is the calibration tool.
+Source: 15.8 s UK motorway dashcam, originally 720x1280 **portrait**. Cropped to
+720x404 landscape (`top=780`), which also removed a burned-in "LIKE & SUBSCRIBE"
+overlay. 458 frames, processed at stride 2 = 229 frames.
+
+| Metric | Value |
+|---|---|
+| Throughput | 515 ms/frame, 1.94 FPS |
+| Lane fit valid | 134 / 229 frames (59%) |
+| Weather (CLIP, zero-shot) | `clear`, visibility 0.85-0.90 |
+| Tracked objects | 1.1 / frame, max 3 |
+| Offset from lane centre | median +0.12 m |
+| Heading error | median +1.3 deg |
+| Traffic lights seen | none (motorway) - correct |
+
+FSM state distribution: FOLLOW 59.8%, CHANGING 21.8%, PREP_CHANGE_R 13.1%,
+LANE_KEEP 5.2% - one complete overtake of the vehicle ahead.
+
+ByteTrack held the same id (`car#1`) on the lead vehicle from frame 8 to frame
+200, confirming tracking stability under real motion.
+
+### Quantization re-measured on real footage
+
+| Metric | Value |
+|---|---|
+| Drivable-area IoU, INT8 vs FP32 | **0.993** |
+| Lane-line IoU, INT8 vs FP32 | **0.958** |
+
+Both are *better* than the 0.985 / 0.941 measured on isolated stills. The
+speedup measured in this run is only 2.1x rather than 5.4x, because the two
+models are timed back to back under sustained load and this laptop thermally
+throttles from 3.1 GHz to about 1.6 GHz; the 5.4x figure in section 1 was
+measured per-model with warmup. Quote 5.4x for the isolated claim and 2.1x for
+the sustained-load claim, and say which is which.
+
+### Two defects only real footage exposed
+
+1. **Curvature was unresolvable but still capped speed.** The circle fit spans
+   only ~7.6 m of ground, over which centimetre-level lane noise produced a
+   13.9 m median radius on a straight motorway, forcing a 17 km/h speed cap.
+   Radii below `segment.min_curve_radius_m` are now reported as unresolvable.
+2. **The FSM overtook forever.** The video path is open-loop, so the ego never
+   moves, the lead vehicle stays in front, and FOLLOW retriggers the instant a
+   lane change completes - 62% of frames were lane-changing. A cooldown after
+   each completed manoeuvre brought that to one overtake and 60% FOLLOW.
+
+## 8. Honest limitations
+
+- **One clip, one condition.** The footage is 15.8 s of clear-weather UK
+  motorway. The adverse-weather claim still rests on the BDD100K stills in
+  section 4, not on video. A rain, fog or night clip would exercise the
+  degradation ladder end to end.
+- **`camera.ipm_src` is calibrated but not surveyed.** The trapezoid comes from
+  measured lane positions, and the forward distances depend on an assumed
+  ~65 deg horizontal field of view. Lateral scale is sound because it derives
+  from the known 3.5 m lane width; forward distances carry roughly a 25%
+  uncertainty. Say so rather than quoting distances as exact.
+- **The HUD is cramped on a 720x404 frame.** The steering and log panels were
+  laid out for 16:9 at 1280 wide and overlap the road on this shorter crop.
+  Cosmetic, and legible, but worth widening the source crop if re-shooting.
 - **No detection accuracy is claimed.** The clips are unlabelled, so no mAP or
   IoU-against-ground-truth number appears anywhere. The only quantitative result
   is §1, which needs no labels because FP32 is its own reference.
