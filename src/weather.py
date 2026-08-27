@@ -110,13 +110,22 @@ def speed_cap_kmh(info: WeatherInfo, cfg: dict) -> float:
 class WeatherClassifier:
     """Zero-shot weather classification with CLIP. No training, no dataset."""
 
-    def __init__(self, model_id: str, labels: list[str], prompts: dict[str, str]):
+    def __init__(
+        self,
+        model_id: str,
+        labels: list[str],
+        prompts: dict[str, str],
+        device: str = "auto",
+    ):
         import torch
         from transformers import CLIPModel, CLIPProcessor
 
+        from src.detect import resolve_device
+
         self.torch = torch
+        self.device = resolve_device(device)
         self.labels = labels
-        self.model = CLIPModel.from_pretrained(model_id).eval()
+        self.model = CLIPModel.from_pretrained(model_id).eval().to(self.device)
         self.proc = CLIPProcessor.from_pretrained(model_id)
         self._texts = [prompts[l] for l in labels]
 
@@ -130,8 +139,9 @@ class WeatherClassifier:
             return_tensors="pt",
             padding=True,
         )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
         with self.torch.no_grad():
-            probs = self.model(**inputs).logits_per_image.softmax(dim=1)[0]
+            probs = self.model(**inputs).logits_per_image.softmax(dim=1)[0].cpu()
         i = int(probs.argmax())
         return WeatherInfo(
             label=self.labels[i],
