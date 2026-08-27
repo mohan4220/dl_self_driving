@@ -69,7 +69,7 @@ control:
   lookahead_min_m: 6.0
   lookahead_k: 0.6        # lookahead = min + k * v(m/s)
   max_steer_deg: 35.0
-  pid: {kp: 0.9, ki: 0.12, kd: 0.05}
+  pid: {kp: 0.3, ki: 0.15, kd: 0.02}   # gains tuned for an m/s speed error, not km/h
   accel_max: 2.5          # m/s^2
   decel_max: 5.0
 

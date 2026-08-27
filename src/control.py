@@ -81,8 +81,16 @@ def longitudinal(
 
     Only one pedal is ever pressed, which is both physically sensible and
     much easier to read on the HUD.
+
+    The error is converted to m/s before it reaches the PID. In km/h, any
+    error above ~1.1 km/h saturated the proportional term alone (kp=0.9),
+    pinning throttle at 1.000 across the whole ramp and starving the
+    integral term (conditional integration only accumulates while
+    unsaturated). m/s error is ~3.6x smaller for the same physical gap, so
+    `control.pid` in config.yaml is retuned accordingly.
     """
-    u = pid.step(target_kmh - current_kmh, dt)
+    error_ms = (target_kmh - current_kmh) / 3.6
+    u = pid.step(error_ms, dt)
     if u >= 0:
         return float(np.clip(u, 0.0, 1.0)), 0.0
     return 0.0, float(np.clip(-u, 0.0, 1.0))
