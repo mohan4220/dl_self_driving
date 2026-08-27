@@ -27,19 +27,16 @@ cd .. && zip -r sdc.zip dl_self_driving_car -x '*/.venv/*' '*/data/*' '*/third_p
 !git clone -b feature/all-weather-sdc <your-repo-url> dl_self_driving_car
 %cd dl_self_driving_car
 
-# Colab ships torch+CUDA and opencv already.
-!pip install -q ultralytics==8.4.128 lap==0.5.13 rapidocr pyyaml
+# Colab ships torch+CUDA and opencv already, so torch is not in this file.
+# requirements-gpu.txt pulls onnxruntime-gpu; requirements-cpu.txt would pull
+# the CPU build and leave the segmenter on CPU.
+!pip install -q -r requirements-gpu.txt
 
-# CRITICAL, and it must come AFTER anything that installs requirements.txt:
-# never have onnxruntime and onnxruntime-gpu installed at the same time. Both
-# wheels ship the same onnxruntime/capi/*.so, so the second silently overwrites
-# the first while pip still lists both -- you end up on the CPU build with no
-# error, which is the usual cause of "GPU shows 0.2/15 GB used".
-#
-# The GPU wheel is a superset: it provides CPUExecutionProvider as well, so
-# there is never a reason to install both.
-!pip uninstall -y -q onnxruntime onnxruntime-gpu
-!pip install -q onnxruntime-gpu
+# Belt and braces: if a previous cell (or a stale runtime) left plain
+# onnxruntime installed, both wheels are present and you silently get whichever
+# came last -- the usual cause of "GPU shows 0.2/15 GB used". Force one:
+!pip uninstall -y -q onnxruntime
+!pip install -q --force-reinstall --no-deps onnxruntime-gpu==1.29.0
 
 import torch, onnxruntime as ort
 print("torch:", torch.__version__, "| cuda:", torch.cuda.is_available())
@@ -199,6 +196,6 @@ OpenCV on CPU and do not benefit from the GPU.
   usually the CPU build, with no error -- the segmenter runs on CPU and GPU memory
   sits near 0.2 GB. The GPU wheel includes `CPUExecutionProvider` too, so install
   only that one.
-- **`pip install -r requirements.txt` pins plain `onnxruntime`.** If you run it
-  after installing `onnxruntime-gpu`, it clobbers the GPU build. Either install
-  requirements first and swap ORT last (as section 2 does), or edit the pin.
+- **Use `requirements-gpu.txt`, not `requirements-cpu.txt`.** The CPU file pins
+  plain `onnxruntime`, and installing it after the GPU wheel clobbers the GPU
+  build. They exist as separate files precisely so this cannot happen by accident.

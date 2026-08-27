@@ -231,8 +231,25 @@ pip install -U pip wheel
 # that this project cannot use. Skip this line on Colab, which ships torch+CUDA.
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 
-pip install -r requirements.txt
+pip install -r requirements-cpu.txt
 ```
+
+**Pick the requirements file that matches your hardware.** They differ only in
+which ONNX Runtime build they pull, and the two builds cannot coexist:
+
+| File | Use when | Installs |
+|---|---|---|
+| `requirements-cpu.txt` | no NVIDIA GPU | `onnxruntime` |
+| `requirements-gpu.txt` | CUDA GPU, incl. Colab | `onnxruntime-gpu` |
+| `requirements-common.txt` | never directly | everything else |
+
+`onnxruntime` and `onnxruntime-gpu` ship the same `onnxruntime/capi/*.so`, so
+installing both leaves one binary and two sets of pip metadata — you silently get
+whichever came last. The GPU wheel includes `CPUExecutionProvider` as well, so
+there is never a reason to have both.
+
+On a GPU you must also point the segmenter at the FP32 model; see
+[docs/COLAB.md](docs/COLAB.md).
 
 Roughly 2–3 GB, almost all of it torch. If `python3 -m venv` fails on Ubuntu:
 `sudo apt install python3.12-venv`.

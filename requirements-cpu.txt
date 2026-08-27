@@ -1,0 +1,15 @@
+# CPU-only install. Use this on a machine with no NVIDIA GPU.
+#
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements-cpu.txt
+#
+# Install torch FIRST from that index URL. Listing torch here would pull the
+# default wheel, which bundles ~2.5 GB of CUDA libraries this install cannot use.
+#
+# Keep config.yaml pointing at models/twinlitenet_int8.onnx -- INT8 dynamic
+# quantization is a CPU optimisation and is 5.4x faster than FP32 here.
+
+-r requirements-common.txt
+
+onnxruntime==1.29.0
