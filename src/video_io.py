@@ -36,17 +36,19 @@ class VideoReader:
 
     def __iter__(self) -> Iterator[tuple[int, float, np.ndarray]]:
         idx, emitted = 0, 0
-        while True:
-            ok, frame = self._cap.read()
-            if not ok:
-                break
-            if idx % self.stride == 0:
-                yield idx, idx / self.fps, frame
-                emitted += 1
-                if self.max_frames is not None and emitted >= self.max_frames:
+        try:
+            while True:
+                ok, frame = self._cap.read()
+                if not ok:
                     break
-            idx += 1
-        self._cap.release()
+                if idx % self.stride == 0:
+                    yield idx, idx / self.fps, frame
+                    emitted += 1
+                    if self.max_frames is not None and emitted >= self.max_frames:
+                        break
+                idx += 1
+        finally:
+            self._cap.release()
 
     def __len__(self) -> int:
         return self.n_frames // self.stride

@@ -1,3 +1,4 @@
+import gc
 import json
 
 import cv2
@@ -65,3 +66,22 @@ def test_control_log_writes_one_json_per_frame(tmp_path):
     assert rows[1]["steer_deg"] == 1.0
     assert rows[2]["events"] == ["event 2"]
     assert rows[0]["fsm_state"] == "LANE_KEEP"
+
+
+def test_reader_releases_capture_when_iterator_abandoned(clip):
+    r = VideoReader(clip)
+    it = iter(r)
+    next(it)
+    next(it)
+    assert r._cap.isOpened()
+    del it
+    gc.collect()
+    assert not r._cap.isOpened(), "capture must be released when the iterator is abandoned"
+
+
+def test_reader_releases_capture_on_consumer_exception(clip):
+    r = VideoReader(clip)
+    with pytest.raises(RuntimeError):
+        for _ in r:
+            raise RuntimeError("consumer blew up")
+    assert not r._cap.isOpened()
