@@ -98,13 +98,40 @@ def update_ttc(
     return new
 
 
+def resolve_device(pref: str = "auto") -> str:
+    """Return 'cuda' or 'cpu'. 'auto' picks CUDA when torch can actually see it.
+
+    Made explicit because relying on a library's own auto-selection gave no
+    way to tell what it chose -- a GPU run that silently stayed on CPU looks
+    identical to a slow GPU.
+    """
+    if pref == "cpu":
+        return "cpu"
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except Exception:
+        pass
+    if pref == "cuda":
+        raise RuntimeError("device: cuda requested but torch reports no CUDA device")
+    return "cpu"
+
+
 class Detector:
     def __init__(
-        self, weights: str, imgsz: int = 640, classes: list[int] | None = None
+        self,
+        weights: str,
+        imgsz: int = 640,
+        classes: list[int] | None = None,
+        device: str = "auto",
     ):
         from ultralytics import YOLO
 
+        self.device = resolve_device(device)
         self.model = YOLO(weights)
+        self.model.to(self.device)
         self.imgsz = imgsz
         self.classes = classes
 
@@ -117,6 +144,7 @@ class Detector:
             persist=True,
             tracker="bytetrack.yaml",
             verbose=False,
+            device=self.device,
         )[0]
 
         out: list[Track] = []

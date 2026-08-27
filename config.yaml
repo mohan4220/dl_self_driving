@@ -4,10 +4,13 @@ model:
   detector: models/yolo11n.pt
   clip: openai/clip-vit-base-patch32
   onnx_threads: 4
+  device: auto           # auto | cpu | cuda. Applies to YOLO and CLIP; the ONNX
+                         # segmenter follows whichever providers onnxruntime offers.
 
 video:
   stride: 2              # process every Nth frame
   out_fps: 15
+  log_every: 10          # print a progress line every N processed frames
 
 camera:
   # Inverse perspective mapping. Source points are in the 640x360 frame,

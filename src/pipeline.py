@@ -32,15 +32,20 @@ class Pipeline:
         self.cfg = cfg
         m, w = cfg["model"], cfg["weather"]
 
+        dev = m.get("device", "auto")
         self.seg = Segmenter(m["segmenter"], m["onnx_threads"])
-        self.det = Detector(m["detector"], cfg["detect"]["imgsz"], cfg["detect"]["classes"])
+        self.det = Detector(
+            m["detector"], cfg["detect"]["imgsz"], cfg["detect"]["classes"], device=dev
+        )
         self.signs = SignReader(cfg["signals"]["min_sign_px"])
         self.planner = Planner(cfg)
         self.H = build_homography(cfg)
         self.pid = PID(**cfg["control"]["pid"])
 
         self.clf = (
-            WeatherClassifier(m["clip"], w["labels"], w["prompts"]) if use_clip else None
+            WeatherClassifier(m["clip"], w["labels"], w["prompts"], device=dev)
+            if use_clip
+            else None
         )
 
         self._weather = WeatherInfo()
@@ -134,6 +139,23 @@ class Pipeline:
         self.ego = bicycle_step(self.ego, steer, thr, brk, dt, cfg)
         return state
 
+    def describe(self) -> dict:
+        """What each model actually ended up running on.
+
+        Reported at startup because a GPU run that silently fell back to CPU
+        looks exactly like a slow GPU run.
+        """
+        seg_dev = "cuda" if "CUDA" in self.seg.provider else "cpu"
+        return {
+            "segmenter": f"{self.cfg['model']['segmenter']}  [{self.seg.provider}]",
+            "segmenter_device": seg_dev,
+            "detector": f"{self.cfg['model']['detector']}  [{self.det.device}]",
+            "detector_device": self.det.device,
+            "weather": (f"{self.cfg['model']['clip']}  [{self.clf.device}]"
+                        if self.clf else "disabled (--no-clip)"),
+            "onnx_threads": self.cfg["model"]["onnx_threads"],
+        }
+
     def run(
         self,
         video_path: str,
@@ -149,6 +171,16 @@ class Pipeline:
 
         frames, total_ms = 0, 0.0
         states: dict[str, int] = {}
+        total_expected = (
+            max_frames if max_frames is not None
+            else max(1, reader.n_frames // max(1, cfg["video"]["stride"]))
+        )
+        every = max(1, cfg["video"].get("log_every", 10))
+        t_start = time.perf_counter()
+
+        print(f"processing {total_expected} frames "
+              f"({reader.width}x{reader.height} @ {reader.fps:.1f}fps, "
+              f"stride {cfg['video']['stride']})", flush=True)
 
         with VideoWriter(out_path, cfg["video"]["out_fps"], size) as vw, \
              ControlLogWriter(log_path) as lw:
@@ -164,6 +196,24 @@ class Pipeline:
                 states[state.decision.fsm_state] = (
                     states.get(state.decision.fsm_state, 0) + 1
                 )
+
+                if frames % every == 0 or frames == 1:
+                    elapsed = time.perf_counter() - t_start
+                    rate = frames / max(1e-9, elapsed)
+                    eta = (total_expected - frames) / max(1e-9, rate)
+                    pct = 100.0 * frames / max(1, total_expected)
+                    ev = state.decision.log[0] if state.decision.log else ""
+                    print(
+                        f"  [{frames:5d}/{total_expected:<5d} {pct:5.1f}%] "
+                        f"t={state.t:6.2f}s  {rate:4.2f} fps  eta {eta:5.0f}s  | "
+                        f"{state.decision.fsm_state:<16} "
+                        f"steer {state.control.steer_deg:+6.1f}deg  "
+                        f"spd {state.decision.target_speed:5.1f}  "
+                        f"obj {len(state.objects):2d}  "
+                        f"lane {'ok ' if state.lanes.valid else 'LOST'}  "
+                        f"{state.weather.label:<5} | {ev[:38]}",
+                        flush=True,
+                    )
 
                 if sim:
                     cv2.imshow("annotated", overlay)
