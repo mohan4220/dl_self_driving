@@ -259,11 +259,20 @@ python -m src.control                # no video needed: prints steering + PID ta
 If those pass, the pipeline is working. `python -m src.control` is the fastest
 smoke test because it exercises the control maths with no model loading.
 
-### 3. Add footage
+### 3. Footage
 
-Drop any forward-facing dashcam video into `data/input/`. Landscape, 20–60 s,
-720p or lower is ideal. The camera must be fixed, roughly centred, with the
-horizon visible.
+**A demo clip is bundled**, so the repo runs out of the box:
+
+```
+data/input/footage2.webm    US rural road, 35.6 s, 862x484, 60 fps
+```
+
+That is the clip every number in the "real footage" results was measured on.
+Skip to step 4 if you just want to see it work.
+
+To use your own: drop any forward-facing dashcam video into `data/input/`.
+Landscape, 20–60 s, 720p or lower is ideal. The camera must be fixed, roughly
+centred, with the horizon visible.
 
 ```bash
 # portrait phone video? crop to landscape first -- a 9:16 frame is ~60% sky
@@ -276,6 +285,10 @@ Pexels and Pixabay are free and unambiguously licensed.
 ### 4. Run
 
 ```bash
+# the bundled demo clip -- 60 fps source, so stride 4
+python run.py --video data/input/footage2.webm --stride 4
+
+# your own clip
 python run.py --video data/input/clip.mp4
 ```
 

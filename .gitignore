@@ -9,7 +9,8 @@ __pycache__/
 data/input/*
 data/output/*
 !data/**/.gitkeep
-!data/input/footage2.webm   # bundled demo clip: US rural road, 35.6s, 862x484
+# bundled demo clip so the repo runs out of the box (US rural road, 35.6s)
+!data/input/footage2.webm
 third_party/
 .pytest_cache/
 .superpowers/
