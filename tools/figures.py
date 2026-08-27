@@ -36,6 +36,18 @@ def _overlay(bgr: np.ndarray, da: np.ndarray, ll: np.ndarray) -> np.ndarray:
     return v
 
 
+def _first_frame(video: str, stride: int) -> np.ndarray:
+    """First frame at this stride, with a clear error instead of StopIteration
+    when the clip has fewer than `stride` frames."""
+    try:
+        return next(iter(VideoReader(video, stride=stride)))[2]
+    except StopIteration:
+        raise ValueError(
+            f"no frame available from {video!r} at stride={stride} -- "
+            "the clip is too short for this figure."
+        ) from None
+
+
 def _label(img: np.ndarray, text: str) -> np.ndarray:
     out = img.copy()
     cv2.rectangle(out, (0, 0), (out.shape[1], 26), (0, 0, 0), -1)
@@ -61,6 +73,11 @@ def fig1_quantization(cfg: dict, video: str, n: int = 12) -> dict:
                        f"INT8  {t8[-1]*1000:.0f} ms   daIoU {da_ious[-1]:.3f}  llIoU {ll_ious[-1]:.3f}"),
             ]))
 
+    if not rows:
+        raise ValueError(
+            f"fig1_quantization: no frames read from {video!r} at stride=7 -- "
+            "the clip is too short (need at least 1 frame at that stride)."
+        )
     cv2.imwrite(str(OUT / "fig1_int8_vs_fp32.jpg"), np.vstack(rows))
     m = {
         "int8_ms": float(np.mean(t8) * 1000),
@@ -77,7 +94,7 @@ def fig1_quantization(cfg: dict, video: str, n: int = 12) -> dict:
 
 def fig2_enhancement(video: str) -> dict:
     """Raw versus restored, one row per weather mode."""
-    frame = next(iter(VideoReader(video, stride=30)))[2]
+    frame = _first_frame(video, stride=30)
     rows, scores = [], {}
     for label in ("fog", "night", "rain"):
         out = enhance(frame, WeatherInfo(label=label))
@@ -100,7 +117,7 @@ def fig3_degradation(cfg: dict, video: str) -> None:
     from src.pipeline import Pipeline
     from src.hud import render
 
-    frame = next(iter(VideoReader(video, stride=30)))[2]
+    frame = _first_frame(video, stride=30)
     pipe = Pipeline(cfg, use_clip=False)
 
     variants = [
