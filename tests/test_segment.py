@@ -14,7 +14,14 @@ def _cfg():
             "fit_bands": 12,
             "fit_min_bands": 4,
         },
-        "camera": {"lane_width_m": 3.5, "seg_w": W, "seg_h": H},
+        "camera": {
+            "lane_width_m": 3.5,
+            "seg_w": W,
+            "seg_h": H,
+            # Same IPM trapezoid as config.yaml's camera block.
+            "ipm_src": [[250, 200], [390, 200], [610, 340], [30, 340]],
+            "ipm_dst_m": [[-1.75, 30.0], [1.75, 30.0], [1.75, 5.0], [-1.75, 5.0]],
+        },
     }
 
 
@@ -41,11 +48,19 @@ def test_centred_straight_lanes_give_zero_offset():
 
 
 def test_lane_shifted_left_means_ego_is_right_of_centre():
-    """Lane centre at x=270 but camera at x=320 -> ego is 50 px right."""
+    """Lane centre at x=270 but camera at x=320 -> ego is right of centre.
+
+    The offset is no longer a flat pixel-to-metre ratio scaled by lane
+    width (that was the defective pixel-proxy algorithm this fix
+    replaces) -- it comes from reprojecting the near ground-plane sample
+    through the IPM homography built from config.yaml's camera.ipm_src /
+    camera.ipm_dst_m. 0.297 m is what src/segment.py's fit_lanes itself
+    measures for this synthetic geometry; the real assertion this test
+    protects is the sign, per the project's offset_m convention.
+    """
     ll = _straight_lanes(190, 350)          # centre = 270
     lanes = fit_lanes(ll, _road(), _cfg())
-    # 160 px between lines == 3.5 m, so 50 px == 1.09 m
-    assert lanes.offset_m == pytest.approx(50 * 3.5 / 160, abs=0.1)
+    assert lanes.offset_m == pytest.approx(0.297, abs=0.05)
     assert lanes.offset_m > 0
 
 

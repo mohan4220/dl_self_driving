@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
+from src.geometry import build_homography, image_to_ground
 from src.types import LaneInfo
 
 SEG_W, SEG_H = 640, 360      # fixed by the model; not configurable
@@ -73,8 +74,31 @@ def _fit(points: list) -> np.ndarray | None:
     return np.polyfit(ys, xs, 2)
 
 
+def _circumradius(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
+    """Radius of the circle through three ground-plane points, in metres.
+
+    Returns inf when the points are collinear (a straight road segment has
+    no well-defined finite-radius circle).
+    """
+    a = float(np.linalg.norm(p1 - p2))
+    b = float(np.linalg.norm(p0 - p2))
+    c = float(np.linalg.norm(p0 - p1))
+    cross = abs((p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1]))
+    if cross < 1e-6:
+        return float("inf")
+    return (a * b * c) / (2.0 * cross)
+
+
 def fit_lanes(ll_mask: np.ndarray, da_mask: np.ndarray, cfg: dict) -> LaneInfo:
-    """Turn the lane-line mask into a centreline offset and heading error."""
+    """Turn the lane-line mask into a centreline offset and heading error.
+
+    The offset/heading/curvature geometry is computed on the ground plane
+    (metres), not in image pixels: a pixel slope is not a ground angle,
+    because one vertical pixel spans far more ground distance than one
+    lateral pixel under perspective. Points are reprojected through the
+    IPM homography from config.yaml (camera.ipm_src -> camera.ipm_dst_m)
+    before any angle or distance is computed.
+    """
     seg = cfg["segment"]
     info = LaneInfo()
 
@@ -90,30 +114,40 @@ def fit_lanes(ll_mask: np.ndarray, da_mask: np.ndarray, cfg: dict) -> LaneInfo:
         return info
 
     h, w = ll_mask.shape
-    y_near = h - 1.0
-    xl, xr = float(np.polyval(lf, y_near)), float(np.polyval(rf, y_near))
+    y_bottom = h - 1.0
+    xl, xr = float(np.polyval(lf, y_bottom)), float(np.polyval(rf, y_bottom))
     lane_px = xr - xl
     if lane_px < 40:                                  # degenerate / crossed fits
         return info
 
-    # Pixels to metres, calibrated by the known lane width. This avoids
-    # needing camera intrinsics for the lateral measurement.
-    m_per_px = cfg["camera"]["lane_width_m"] / lane_px
+    # Common y-support of both fits: extrapolating a quadratic beyond the
+    # pixels it was fit to (e.g. all the way to the image bottom) produces
+    # meaningless values, so only measure inside the overlap.
+    left_ys = [p[0] for p in left_pts]
+    right_ys = [p[0] for p in right_pts]
+    y_near = min(max(left_ys), max(right_ys))
+    y_far = max(min(left_ys), min(right_ys))
+    if y_near - y_far < 30:                           # too little overlap
+        return info
 
-    lane_cx = (xl + xr) / 2.0
+    ys = np.linspace(y_far, y_near, 6)
+    xs = (np.polyval(lf, ys) + np.polyval(rf, ys)) / 2.0
+    pts_px = np.stack([xs, ys], axis=1).astype(np.float32)
+
+    H = build_homography(cfg)
+    ground = image_to_ground(H, pts_px)
+    ground = ground[np.argsort(ground[:, 1])]         # nearest (smallest y_forward) first
+
     info.left_fit, info.right_fit = lf, rf
-    info.offset_m = (w / 2.0 - lane_cx) * m_per_px    # + = ego right of centre
+    info.offset_m = float(-ground[0, 0])              # + = ego right of centre
 
-    # Heading error from the centreline slope dx/dy at the bottom of the frame.
-    centre = (lf + rf) / 2.0
-    dxdy = float(np.polyval(np.polyder(centre), y_near))
-    info.heading_err_rad = float(np.arctan(-dxdy))    # + = lane heads right
+    dx = float(ground[-1, 0] - ground[0, 0])
+    dy = float(ground[-1, 1] - ground[0, 1])
+    info.heading_err_rad = float(np.arctan2(dx, dy)) if dy > 0.1 else 0.0
 
-    d2 = float(np.polyval(np.polyder(centre, 2), y_near))
-    info.curvature_m = (
-        float("inf") if abs(d2) < 1e-9
-        else abs((1 + dxdy ** 2) ** 1.5 / d2) * m_per_px
-    )
+    mid = ground[len(ground) // 2]
+    info.curvature_m = _circumradius(ground[0], mid, ground[-1])
+
     info.valid = True
     return info
 
