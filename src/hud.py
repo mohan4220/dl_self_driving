@@ -19,6 +19,7 @@ AMBER = (0, 190, 255)
 RED = (0, 0, 255)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 LOG_PANEL_MAX_X2 = 340   # log panel's right edge on a wide frame (unchanged behaviour)
+LOG_FS_MIN = 0.30      # smallest log font before we start dropping words
 LOG_STEER_GAP = 10       # minimum clearance between the log panel and the steering panel
 
 STATE_COLOUR = {
@@ -161,9 +162,26 @@ def render(state: FrameState, cfg: dict) -> np.ndarray:
         for i, line in enumerate(lines):
             y = h - 8 - 22 * (len(lines) - 1 - i)
             text = f"> {line}"
-            while text and cv2.getTextSize(text, FONT, log_fs, 1)[0][0] > max_text_w:
-                text = text[:-1]
-            cv2.putText(img, text, (8, y), FONT, log_fs, AMBER, 1)
+            # Shrink to fit before cutting. Truncating mid-token silently
+            # corrupts the message -- "MATCHING 50" cut to "MATCHING 5" reads
+            # as a different speed -- so losing font size is the lesser evil.
+            scale = log_fs
+            while (
+                scale > LOG_FS_MIN
+                and cv2.getTextSize(text, FONT, scale, 1)[0][0] > max_text_w
+            ):
+                scale -= 0.02
+            # Still too long at the floor: drop whole words and mark the cut,
+            # so a clipped line is never mistaken for a complete one.
+            if cv2.getTextSize(text, FONT, scale, 1)[0][0] > max_text_w:
+                words = text.split()
+                while len(words) > 1 and (
+                    cv2.getTextSize(" ".join(words) + "...", FONT, scale, 1)[0][0]
+                    > max_text_w
+                ):
+                    words.pop()
+                text = " ".join(words) + "..."
+            cv2.putText(img, text, (8, y), FONT, scale, AMBER, 1)
 
     return img
 
