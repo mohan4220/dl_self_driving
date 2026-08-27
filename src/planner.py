@@ -48,6 +48,7 @@ class Planner:
         self._follow_frames = 0
         self._prep_frames = 0
         self._change_frames = 0
+        self._cooldown = 0                      # frames left before another overtake
         self._manoeuvre: str | None = None      # "left" | "right" | None
         self._prev_state = "LANE_KEEP"
         self._ebrake_frames = 0                 # consecutive frames below ebrake_ttc_s
@@ -123,6 +124,8 @@ class Planner:
         p = self.cfg["planner"]
         d = Decision()
         level = degrade_level(state, self.cfg)
+        if self._cooldown > 0:
+            self._cooldown -= 1
 
         caps = self._speed_caps(state, level)
         target, reason = min(caps, key=lambda c: c[0])
@@ -189,6 +192,7 @@ class Planner:
                 d.fsm_state, d.indicator = "LANE_KEEP", "off"
                 d.log.append("LANE CHANGE COMPLETE - INDICATOR OFF")
                 self._reset_manoeuvre()
+                self._cooldown = p["lane_change_cooldown_frames"]
 
         # 6. Following, and possibly deciding to overtake.
         elif lead is not None and lead.dist_m < (d.target_speed / 3.6) * p["follow_time_gap_s"] + 10.0:
@@ -197,6 +201,7 @@ class Planner:
             d.log.append(f"FOLLOWING {lead.cls.upper()} AT {lead.dist_m:.0f}m")
             if (
                 self._follow_frames >= p["follow_frames_before_change"]
+                and self._cooldown <= 0
                 and level == 0
                 and self._target_lane_clear(state, p["overtake_side"], d.target_speed)
             ):

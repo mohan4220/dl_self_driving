@@ -14,11 +14,15 @@ camera:
   # clockwise from top-left of the trapezoid covering the road ahead.
   seg_w: 640
   seg_h: 360
-  ipm_src: [[250, 200], [390, 200], [610, 340], [30, 340]]
-  ipm_dst_m: [[-1.75, 30.0], [1.75, 30.0], [1.75, 5.0], [-1.75, 5.0]]
+  # Calibrated against data/input/clear.mp4 by measuring lane-line positions
+  # across 7 straight frames. Horizon solves to y~190, camera height ~1.72 m.
+  # Trapezoid is centred on the camera axis (x=320) so ground x=0 is the
+  # optical centre, not the lane centre -- otherwise offset_m reads ~0 always.
+  ipm_src: [[254, 255], [387, 255], [478, 345], [162, 345]]
+  ipm_dst_m: [[-1.75, 13.2], [1.75, 13.2], [1.75, 5.6], [-1.75, 5.6]]
   lane_width_m: 3.5
   wheelbase_m: 2.7
-  cam_height_m: 1.35
+  cam_height_m: 1.72     # derived from the two-row perspective solve, not assumed
 
 detect:
   conf: 0.35
@@ -33,6 +37,8 @@ segment:
   ll_min_px_frac: 0.0015
   fit_bands: 12          # horizontal bands used to sample lane pixels
   fit_min_bands: 4       # fewer valid bands than this -> lane fit invalid
+  min_curve_radius_m: 80 # tighter than this is noise, not road: the IPM baseline
+                         # is only ~7.6 m, too short to resolve real highway curvature       # fewer valid bands than this -> lane fit invalid
 
 weather:
   clip_every: 15
@@ -60,9 +66,12 @@ planner:
   yield_ped_dist_m: 25.0
   stop_line_dist_m: 20.0
   signal_uncertain_cap_kmh: 20      # caution cap when the light state cannot be read
-  overtake_side: left
+  overtake_side: right   # UK footage: left-hand traffic, so overtaking is on the right
   follow_frames_before_change: 20   # sustained following before considering an overtake
-  change_frames: 25                 # how long the lateral manoeuvre takes
+  change_frames: 25
+  lane_change_cooldown_frames: 90   # no back-to-back overtakes. On the video path the
+                                    # ego never actually moves, so without this the lead
+                                    # stays in front and the FSM overtakes forever.                 # how long the lateral manoeuvre takes
   lat_accel_max: 3.0                # m/s^2, sets the cornering speed cap
 
 control:

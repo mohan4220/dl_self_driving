@@ -13,6 +13,7 @@ def _cfg():
             "ll_min_px_frac": 0.0015,
             "fit_bands": 12,
             "fit_min_bands": 4,
+            "min_curve_radius_m": 80,
         },
         "camera": {
             "lane_width_m": 3.5,

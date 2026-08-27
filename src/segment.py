@@ -145,8 +145,15 @@ def fit_lanes(ll_mask: np.ndarray, da_mask: np.ndarray, cfg: dict) -> LaneInfo:
     dy = float(ground[-1, 1] - ground[0, 1])
     info.heading_err_rad = float(np.arctan2(dx, dy)) if dy > 0.1 else 0.0
 
+    # Curvature is second-order, so it needs a much longer baseline than
+    # offset and heading do. The IPM span here is only a few metres, over
+    # which centimetre-level lane noise produces absurdly small radii -- a
+    # straight motorway measured 13.9 m median. Anything tighter than
+    # min_curve_radius_m is therefore noise, not road, and is reported as
+    # unresolvable (inf = straight) rather than capping the speed on a lie.
     mid = ground[len(ground) // 2]
-    info.curvature_m = _circumradius(ground[0], mid, ground[-1])
+    r = _circumradius(ground[0], mid, ground[-1])
+    info.curvature_m = r if r >= seg["min_curve_radius_m"] else float("inf")
 
     info.valid = True
     return info
