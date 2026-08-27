@@ -20,6 +20,19 @@ STATES = (
 )
 
 
+def _ramp_to_stop(cruise_kmh: float, stop_dist_m: float, p: dict) -> float:
+    """Linearly ramp the cruise speed down to 0 as the stop line nears.
+
+    `stop_dist_m` is only ever considered here once it is inside
+    stop_line_dist_m (the callers already gate on that), so the fraction is
+    1.0 at the gate and decays to 0.0 exactly at the line.
+    """
+    if not np.isfinite(stop_dist_m):
+        return 0.0
+    frac = max(0.0, min(1.0, stop_dist_m / p["stop_line_dist_m"]))
+    return cruise_kmh * frac
+
+
 def degrade_level(state: FrameState, cfg: dict) -> int:
     """0 = lane lines usable, 1 = free-space fallback, 2 = blind."""
     if state.lanes.valid:
@@ -37,6 +50,7 @@ class Planner:
         self._change_frames = 0
         self._manoeuvre: str | None = None      # "left" | "right" | None
         self._prev_state = "LANE_KEEP"
+        self._ebrake_frames = 0                 # consecutive frames below ebrake_ttc_s
 
     # --- helpers -------------------------------------------------------
 
@@ -47,12 +61,21 @@ class Planner:
         ]
         return min(leads, key=lambda t: t.dist_m) if leads else None
 
-    def _target_lane_clear(self, state: FrameState, side: str) -> bool:
+    def _stop_sign_ahead(self, state: FrameState):
+        p = self.cfg["planner"]
+        signs = [
+            t for t in state.objects
+            if t.cls == "stop_sign" and t.in_path and np.isfinite(t.dist_m)
+            and t.dist_m < p["stop_line_dist_m"]
+        ]
+        return min(signs, key=lambda t: t.dist_m) if signs else None
+
+    def _target_lane_clear(self, state: FrameState, side: str, target_speed_kmh: float) -> bool:
         """Is there a safe gap in the lane we want to move into?"""
         p = self.cfg["planner"]
         corridor = self.cfg["bev"]["corridor_m"]
         lo, hi = (-3 * corridor, -corridor) if side == "left" else (corridor, 3 * corridor)
-        gap_m = p["lane_change_gap_s"] * (state.decision.target_speed / 3.6 or 10.0)
+        gap_m = p["lane_change_gap_s"] * (target_speed_kmh / 3.6 or 10.0)
         for t in state.objects:
             if not np.isfinite(t.lateral_m) or not np.isfinite(t.dist_m):
                 continue
@@ -80,6 +103,11 @@ class Planner:
         elif level == 2:
             caps.append((float(d["blind_speed_cap_kmh"]), "PERCEPTION DEGRADED"))
 
+        if state.signals.light_state == "unknown":
+            # A perception failure should slow the car, not halt it -- and
+            # not force a full stop the way a confirmed red/amber does.
+            caps.append((float(p["signal_uncertain_cap_kmh"]), "SIGNAL UNCERTAIN"))
+
         lead = self._lead_vehicle(state)
         if lead is not None:
             gap = p["follow_time_gap_s"]
@@ -101,6 +129,7 @@ class Planner:
         d.target_speed = max(0.0, target)
 
         lead = self._lead_vehicle(state)
+        stop_sign = self._stop_sign_ahead(state)
         hazards = [t for t in state.objects if t.in_path and np.isfinite(t.ttc_s)]
         soonest = min((t.ttc_s for t in hazards), default=float("inf"))
         ped = [
@@ -108,8 +137,16 @@ class Planner:
             if t.in_path and t.cls in VULNERABLE and t.dist_m < p["yield_ped_dist_m"]
         ]
 
-        # 1. Imminent collision.
+        # 1. Imminent collision. A single low-TTC frame is often bounding-box
+        # jitter (see update_ttc's own smoothing), not a real closing hazard,
+        # so this must persist for ebrake_frames consecutive frames before we
+        # actually brake -- and the counter resets the instant it clears.
         if soonest < p["ebrake_ttc_s"]:
+            self._ebrake_frames += 1
+        else:
+            self._ebrake_frames = 0
+
+        if self._ebrake_frames >= p["ebrake_frames"]:
             d.fsm_state, d.target_speed, d.indicator = "EMERGENCY_BRAKE", 0.0, "off"
             d.log.append(f"EMERGENCY BRAKE - TTC {soonest:.1f}s")
             self._reset_manoeuvre()
@@ -121,13 +158,19 @@ class Planner:
             d.log.append(f"YIELDING - {ped[0].cls.upper()} AT {ped[0].dist_m:.0f}m")
             self._reset_manoeuvre()
 
-        # 3. Signal says stop.
-        elif state.signals.light_state in ("red", "amber", "unknown"):
-            d.fsm_state, d.target_speed, d.indicator = "STOP_SIGNAL", 0.0, "off"
-            note = ("SIGNAL UNCERTAIN - DECELERATING"
-                    if state.signals.light_state == "unknown"
-                    else f"{state.signals.light_state.upper()} LIGHT - STOPPING")
-            d.log.append(note)
+        # 3. A confirmed red/amber light or an in-corridor stop sign requires
+        # stopping. Both ramp target_speed down with remaining distance
+        # rather than snapping to 0, reaching 0 at the stop line.
+        elif state.signals.light_state in ("red", "amber"):
+            d.fsm_state, d.indicator = "STOP_SIGNAL", "off"
+            d.target_speed = _ramp_to_stop(d.target_speed, state.signals.light_dist_m, p)
+            d.log.append(f"{state.signals.light_state.upper()} LIGHT - STOPPING")
+            self._reset_manoeuvre()
+
+        elif stop_sign is not None:
+            d.fsm_state, d.indicator = "STOP_SIGNAL", "off"
+            d.target_speed = _ramp_to_stop(d.target_speed, stop_sign.dist_m, p)
+            d.log.append(f"STOP SIGN AT {stop_sign.dist_m:.0f}m - STOPPING")
             self._reset_manoeuvre()
 
         # 4/5. A lane change already in progress.
@@ -140,6 +183,7 @@ class Planner:
             elif self._change_frames < p["change_frames"]:
                 self._change_frames += 1
                 d.fsm_state = "CHANGING"
+                d.lane_change_progress = self._change_frames / p["change_frames"]
                 d.log.append(f"CHANGING LANE {self._manoeuvre.upper()}")
             else:
                 d.fsm_state, d.indicator = "LANE_KEEP", "off"
@@ -154,7 +198,7 @@ class Planner:
             if (
                 self._follow_frames >= p["follow_frames_before_change"]
                 and level == 0
-                and self._target_lane_clear(state, p["overtake_side"])
+                and self._target_lane_clear(state, p["overtake_side"], d.target_speed)
             ):
                 self._manoeuvre = p["overtake_side"]
                 self._prep_frames = 1

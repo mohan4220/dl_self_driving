@@ -56,8 +56,10 @@ planner:
   lane_change_gap_s: 3.0
   indicator_lead_frames: 15
   ebrake_ttc_s: 1.5
+  ebrake_frames: 3                  # consecutive low-TTC frames required before EMERGENCY_BRAKE
   yield_ped_dist_m: 25.0
   stop_line_dist_m: 20.0
+  signal_uncertain_cap_kmh: 20      # caution cap when the light state cannot be read
   overtake_side: left
   follow_frames_before_change: 20   # sustained following before considering an overtake
   change_frames: 25                 # how long the lateral manoeuvre takes

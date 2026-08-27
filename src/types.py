@@ -54,6 +54,7 @@ class SignalInfo:
     light_state: str = "none"            # none | red | amber | green | unknown
     signs: list[Sign] = field(default_factory=list)
     speed_limit_kmh: int = 50
+    light_dist_m: float = float("inf")   # distance to the light that set light_state
 
 
 @dataclass
@@ -68,6 +69,7 @@ class Decision:
     fsm_state: str = "LANE_KEEP"
     target_speed: float = 0.0            # km/h, commanded
     indicator: str = "off"               # off | left | right
+    lane_change_progress: float = 0.0    # 0..1 across the CHANGING manoeuvre
     log: list[str] = field(default_factory=list)
 
 
