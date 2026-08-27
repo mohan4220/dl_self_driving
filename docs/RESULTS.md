@@ -134,6 +134,38 @@ the sustained-load claim, and say which is which.
    lane change completes - 62% of frames were lane-changing. A cooldown after
    each completed manoeuvre brought that to one overtake and 60% FOLLOW.
 
+### Second clip: US rural road
+
+Source: `footage2.webm`, 862x484 landscape, 60 fps, 35.6 s. No crop needed.
+Processed at stride 4 (534 frames, ~15 fps effective).
+
+| Metric | UK motorway (clip 1) | US rural (clip 2) |
+|---|---|---|
+| Throughput | 515 ms/frame (1.94 FPS) | **367 ms/frame (2.72 FPS)** |
+| Lane fit valid | 59% | **69%** |
+| Mean absolute steering | 4.4 deg | **2.5 deg** |
+| Target speed, mean | 26 km/h | **45.9 km/h** |
+| Objects per frame | 1.1 | 0.22 |
+| FSM | FOLLOW 60%, CHANGING 22% | **LANE_KEEP 92%, FOLLOW 8%** |
+
+The second clip is the better demo. Lane fitting succeeds more often because the
+road carries both a painted yellow centre line and a white edge line, steering
+stays near zero as it should on a gently curving road, and the FSM sits in
+LANE_KEEP rather than cycling through overtakes.
+
+**The degradation ladder fired on real footage here** - several frames report
+`LANE LOST - FREESPACE MODE` with the target speed dropping from 50 to 40 km/h,
+which is the ladder in section 5 working outside a synthetic test.
+
+Two caveats specific to this clip. Detections show `car#-1`, the tracker-dropout
+fallback rather than a real ByteTrack id: traffic is sparse and distant
+(0.22 objects/frame), so ByteTrack never establishes stable tracks. The fallback
+behaves as designed, but time-to-collision is unavailable for those objects.
+And `planner.overtake_side` is set to `right` for the UK clip while this is a
+US road where overtaking is on the left - it made no difference because this
+clip never triggered a lane change, but the setting is per-region and would need
+flipping to demo an overtake here.
+
 ## 8. Honest limitations
 
 - **One clip, one condition.** The footage is 15.8 s of clear-weather UK
