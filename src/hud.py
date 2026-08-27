@@ -18,6 +18,8 @@ GREEN = (0, 220, 0)
 AMBER = (0, 190, 255)
 RED = (0, 0, 255)
 FONT = cv2.FONT_HERSHEY_SIMPLEX
+LOG_PANEL_MAX_X2 = 340   # log panel's right edge on a wide frame (unchanged behaviour)
+LOG_STEER_GAP = 10       # minimum clearance between the log panel and the steering panel
 
 STATE_COLOUR = {
     "LANE_KEEP": GREEN,
@@ -75,6 +77,16 @@ def render(state: FrameState, cfg: dict) -> np.ndarray:
     hud = cfg["hud"]
     fs = hud["font_scale"]
 
+    # --- lane overlay (drawn before detections so box colours stay pure) ---
+    if state.drivable is not None:
+        mask = cv2.resize(state.drivable, (w, h), interpolation=cv2.INTER_NEAREST)
+        tint = np.zeros_like(img)
+        tint[mask.astype(bool)] = (0, 120, 0)
+        cv2.addWeighted(img, 1.0, tint, 0.35, 0, img)
+    if state.lane_mask is not None:
+        mask = cv2.resize(state.lane_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+        img[mask.astype(bool)] = RED
+
     # --- detections ---
     for t in state.objects:
         x1, y1, x2, y2 = t.bbox
@@ -86,16 +98,6 @@ def render(state: FrameState, cfg: dict) -> np.ndarray:
         if np.isfinite(t.ttc_s):
             label += f" ttc{t.ttc_s:.1f}s"
         cv2.putText(img, label, (x1, max(12, y1 - 5)), FONT, 0.4, colour, 1)
-
-    # --- lane overlay ---
-    if state.drivable is not None:
-        mask = cv2.resize(state.drivable, (w, h), interpolation=cv2.INTER_NEAREST)
-        tint = np.zeros_like(img)
-        tint[mask.astype(bool)] = (0, 120, 0)
-        cv2.addWeighted(img, 1.0, tint, 0.35, 0, img)
-    if state.lane_mask is not None:
-        mask = cv2.resize(state.lane_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-        img[mask.astype(bool)] = RED
 
     # --- top-left status panel ---
     _panel(img, 0, 0, 250, 96)
@@ -146,12 +148,22 @@ def render(state: FrameState, cfg: dict) -> np.ndarray:
         )
 
     # --- scrolling event log, bottom left ---
+    # Right edge is capped at LOG_PANEL_MAX_X2 on wide frames (unchanged from
+    # before), but narrows so it always clears the steering panel's left edge
+    # by LOG_STEER_GAP — the two would otherwise overlap below ~900px wide.
     lines = state.decision.log[-hud["log_lines"]:]
     if lines:
-        _panel(img, 0, h - 22 * len(lines) - 8, 340, h)
+        steer_x1 = cx - 110
+        log_x2 = min(LOG_PANEL_MAX_X2, max(0, steer_x1 - LOG_STEER_GAP))
+        log_fs = fs - 0.05
+        max_text_w = max(0, log_x2 - 16)
+        _panel(img, 0, h - 22 * len(lines) - 8, log_x2, h)
         for i, line in enumerate(lines):
             y = h - 8 - 22 * (len(lines) - 1 - i)
-            cv2.putText(img, f"> {line[:44]}", (8, y), FONT, fs - 0.05, AMBER, 1)
+            text = f"> {line}"
+            while text and cv2.getTextSize(text, FONT, log_fs, 1)[0][0] > max_text_w:
+                text = text[:-1]
+            cv2.putText(img, text, (8, y), FONT, log_fs, AMBER, 1)
 
     return img
 
