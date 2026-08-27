@@ -59,6 +59,9 @@ planner:
   yield_ped_dist_m: 25.0
   stop_line_dist_m: 20.0
   overtake_side: left
+  follow_frames_before_change: 20   # sustained following before considering an overtake
+  change_frames: 25                 # how long the lateral manoeuvre takes
+  lat_accel_max: 3.0                # m/s^2, sets the cornering speed cap
 
 control:
   lookahead_min_m: 6.0
