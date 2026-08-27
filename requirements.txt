@@ -8,6 +8,11 @@
 # onnxruntime for onnxruntime-gpu (see docs/COLAB.md).
 
 # --- inference runtimes ---
+# GPU MACHINES: replace this with onnxruntime-gpu, and install ONLY ONE of them.
+# Both wheels ship the same onnxruntime/capi/*.so, so having both installed means
+# the second silently overwrites the first while pip still lists both. The GPU
+# build is a superset -- it provides CPUExecutionProvider too -- so nothing is
+# lost by using it everywhere a GPU exists. See docs/COLAB.md.
 onnxruntime==1.29.0
 onnx
 ultralytics==8.4.128
@@ -27,3 +32,4 @@ pyyaml               # config.yaml
 matplotlib           # tools/figures.py
 tqdm
 pytest
+onnxruntime-gpu

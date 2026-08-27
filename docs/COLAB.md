@@ -28,12 +28,18 @@ cd .. && zip -r sdc.zip dl_self_driving_car -x '*/.venv/*' '*/data/*' '*/third_p
 %cd dl_self_driving_car
 
 # Colab ships torch+CUDA and opencv already.
-# CRITICAL: onnxruntime-gpu, and plain onnxruntime must NOT be present.
-# If both are installed, ORT silently uses the CPU build and the segmenter
-# stays on CPU -- which is the usual cause of "GPU shows 0.2/15 GB used".
+!pip install -q ultralytics==8.4.128 lap==0.5.13 rapidocr pyyaml
+
+# CRITICAL, and it must come AFTER anything that installs requirements.txt:
+# never have onnxruntime and onnxruntime-gpu installed at the same time. Both
+# wheels ship the same onnxruntime/capi/*.so, so the second silently overwrites
+# the first while pip still lists both -- you end up on the CPU build with no
+# error, which is the usual cause of "GPU shows 0.2/15 GB used".
+#
+# The GPU wheel is a superset: it provides CPUExecutionProvider as well, so
+# there is never a reason to install both.
 !pip uninstall -y -q onnxruntime onnxruntime-gpu
 !pip install -q onnxruntime-gpu
-!pip install -q ultralytics==8.4.128 lap==0.5.13 rapidocr pyyaml
 
 import torch, onnxruntime as ort
 print("torch:", torch.__version__, "| cuda:", torch.cuda.is_available())
@@ -187,7 +193,12 @@ OpenCV on CPU and do not benefit from the GPU.
   caps never fire.
 - **`opencv-python` vs `opencv-python-headless`.** Colab preinstalls one already;
   do not install the other on top, it breaks the cv2 import.
-- **`onnxruntime` and `onnxruntime-gpu` must never both be installed.** With both
-  present ORT loads the CPU build, the segmenter silently runs on CPU, and GPU
-  memory sits near 0.2 GB. Section 2 uninstalls both before installing the GPU
-  build for exactly this reason.
+- **`onnxruntime` and `onnxruntime-gpu` must never both be installed.** They share
+  the same `onnxruntime/capi/*.so`, so the second install overwrites the first
+  while `pip list` keeps showing both. You land on whichever was installed last,
+  usually the CPU build, with no error -- the segmenter runs on CPU and GPU memory
+  sits near 0.2 GB. The GPU wheel includes `CPUExecutionProvider` too, so install
+  only that one.
+- **`pip install -r requirements.txt` pins plain `onnxruntime`.** If you run it
+  after installing `onnxruntime-gpu`, it clobbers the GPU build. Either install
+  requirements first and swap ORT last (as section 2 does), or edit the pin.
