@@ -171,14 +171,16 @@ class Pipeline:
 
         frames, total_ms = 0, 0.0
         states: dict[str, int] = {}
-        total_expected = (
-            max_frames if max_frames is not None
-            else max(1, reader.n_frames // max(1, cfg["video"]["stride"]))
-        )
+        total_expected = reader.expected_frames
+        if max_frames is not None:
+            total_expected = (max_frames if total_expected is None
+                              else min(total_expected, max_frames))
         every = max(1, cfg["video"].get("log_every", 10))
         t_start = time.perf_counter()
 
-        print(f"processing {total_expected} frames "
+        howmany = (f"{total_expected} frames" if total_expected
+                   else "frames (total unknown: container reports no usable count)")
+        print(f"processing {howmany} "
               f"({reader.width}x{reader.height} @ {reader.fps:.1f}fps, "
               f"stride {cfg['video']['stride']})", flush=True)
 
@@ -200,12 +202,17 @@ class Pipeline:
                 if frames % every == 0 or frames == 1:
                     elapsed = time.perf_counter() - t_start
                     rate = frames / max(1e-9, elapsed)
-                    eta = (total_expected - frames) / max(1e-9, rate)
-                    pct = 100.0 * frames / max(1, total_expected)
                     ev = state.decision.log[0] if state.decision.log else ""
+                    if total_expected:
+                        eta = max(0.0, (total_expected - frames)) / max(1e-9, rate)
+                        head = (f"  [{frames:5d}/{total_expected:<5d} "
+                                f"{100.0 * frames / total_expected:5.1f}%] "
+                                f"t={state.t:6.2f}s  {rate:4.2f} fps  eta {eta:5.0f}s  | ")
+                    else:
+                        head = (f"  [{frames:5d}] t={state.t:6.2f}s  "
+                                f"{rate:4.2f} fps  elapsed {elapsed:5.0f}s  | ")
                     print(
-                        f"  [{frames:5d}/{total_expected:<5d} {pct:5.1f}%] "
-                        f"t={state.t:6.2f}s  {rate:4.2f} fps  eta {eta:5.0f}s  | "
+                        head +
                         f"{state.decision.fsm_state:<16} "
                         f"steer {state.control.steer_deg:+6.1f}deg  "
                         f"spd {state.decision.target_speed:5.1f}  "

@@ -32,7 +32,11 @@ class VideoReader:
         self.fps = self._cap.get(cv2.CAP_PROP_FPS) or 30.0
         self.width = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.n_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        # Container metadata is not always trustworthy: WebM in particular can
+        # report a garbage count (observed: -5.5e17). Treat anything implausible
+        # as unknown rather than passing it downstream as if it were real.
+        raw = self._cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        self.n_frames = int(raw) if 0 < raw < 1e9 else 0   # 0 == unknown
 
     def __iter__(self) -> Iterator[tuple[int, float, np.ndarray]]:
         idx, emitted = 0, 0
@@ -52,6 +56,14 @@ class VideoReader:
 
     def __len__(self) -> int:
         return self.n_frames // self.stride
+
+    @property
+    def expected_frames(self) -> int | None:
+        """How many frames this reader will yield, or None if unknowable."""
+        if self.n_frames <= 0:
+            return None
+        n = self.n_frames // self.stride
+        return min(n, self.max_frames) if self.max_frames is not None else n
 
 
 class VideoWriter:
