@@ -24,33 +24,59 @@ cd .. && zip -r sdc.zip dl_self_driving_car -x '*/.venv/*' '*/data/*' '*/third_p
 ## 2. Setup cell
 
 ```python
-!git clone -b feature/all-weather-sdc https://github.com/<you>/dl_self_driving_car.git
+!git clone -b feature/all-weather-sdc <your-repo-url> dl_self_driving_car
 %cd dl_self_driving_car
 
-# Colab ships torch+CUDA and opencv already. Install the rest.
-!pip install -q ultralytics==8.4.128 lap==0.5.13 onnxruntime-gpu rapidocr pyyaml
+# Colab ships torch+CUDA and opencv already.
+# CRITICAL: onnxruntime-gpu, and plain onnxruntime must NOT be present.
+# If both are installed, ORT silently uses the CPU build and the segmenter
+# stays on CPU -- which is the usual cause of "GPU shows 0.2/15 GB used".
+!pip uninstall -y -q onnxruntime onnxruntime-gpu
+!pip install -q onnxruntime-gpu
+!pip install -q ultralytics==8.4.128 lap==0.5.13 rapidocr pyyaml
 
-import onnxruntime as ort, torch
-print("ORT providers:", ort.get_available_providers())
-print("torch CUDA:", torch.cuda.is_available(), torch.cuda.get_device_name(0))
+import torch, onnxruntime as ort
+print("torch:", torch.__version__, "| cuda:", torch.cuda.is_available())
+print("gpu:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none")
+print("ort:", ort.__version__)
+print("ort providers:", ort.get_available_providers())
 ```
 
-You want `CUDAExecutionProvider` in that list. Note `onnxruntime-gpu`, not
-plain `onnxruntime` — installing both causes provider conflicts, so if you hit
-one, `pip uninstall -y onnxruntime` and keep only the GPU build.
+`CUDAExecutionProvider` **must** appear in that provider list. If it does not,
+nothing below will use the GPU for segmentation.
 
-## 3. Switch the segmenter to FP32
+If it is missing, the usual cause is a CUDA/cuDNN mismatch with the ORT build.
+Check what ORT is complaining about:
 
-`Segmenter` picks CUDA automatically when it is available. But the INT8 model is
-CPU-tuned — dynamic quantization gives **no** speedup on CUDA and can be slower,
-so point the config at the FP32 file for GPU runs:
+```python
+import onnxruntime as ort
+try:
+    ort.InferenceSession("models/twinlitenet_fp32.onnx",
+                         providers=["CUDAExecutionProvider"])
+    print("CUDA provider loads fine")
+except Exception as e:
+    print("CUDA provider failed:", e)
+```
+
+A `libcudnn` / `libcublas` error means the ORT build wants a different CUDA
+minor version than Colab has. Two workarounds: pin an older ORT
+(`pip install onnxruntime-gpu==1.19.2`), or accept the segmenter on CPU — YOLO
+and CLIP will still use the GPU, which is most of the win.
+
+## 3. Point the segmenter at FP32
+
+The INT8 model is **CPU-only by construction**. Dynamic quantization produces
+`ConvInteger`/`MatMulInteger` ops that the CUDA provider does not implement, so
+ORT falls back to CPU for those nodes — you get no speedup and a GPU sitting
+idle. On a GPU runtime you must switch to FP32:
 
 ```python
 !sed -i 's|segmenter: models/twinlitenet_int8.onnx|segmenter: models/twinlitenet_fp32.onnx|' config.yaml
-!grep -n 'segmenter' config.yaml
+!grep -n 'segmenter:' config.yaml
 ```
 
-Keep INT8 on the laptop, FP32 on Colab. Section 1 of `RESULTS.md` explains why.
+Keep INT8 on a CPU machine, FP32 on a GPU one. Section 1 of `RESULTS.md`
+explains why.
 
 ## 4. Upload footage
 
@@ -79,6 +105,33 @@ run will fail. The `--sim` window is a local-only path. Everything else, includi
 the full HUD in the output video, works.
 
 Drop `--stride` for full frame rate, or raise it to preview quickly.
+
+## 5b. Confirm the GPU is actually being used
+
+`run.py` now prints an environment and model banner before processing starts.
+You want to see this:
+
+```
+=== models ===
+  segmenter   models/twinlitenet_fp32.onnx  [CUDAExecutionProvider]
+  detector    models/yolo11n.pt  [cuda]
+  weather     openai/clip-vit-base-patch32  [cuda]
+```
+
+If any of those says `CPUExecutionProvider` or `[cpu]` while a GPU is present,
+the run prints an explicit WARNING telling you which model fell back and why.
+
+Cross-check with the GPU itself, in a second cell while a run is in progress:
+
+```python
+!nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv
+```
+
+Expect roughly 1.5-3 GB used and non-zero utilisation. **0.2 GB means only a
+CUDA context was created and no model is actually on the device** — that is the
+symptom this section exists to fix.
+
+Rough per-model memory: YOLO11n ~0.4 GB, CLIP ~0.9 GB, TwinLiteNet FP32 ~0.3 GB.
 
 ## 6. Preview and download
 
@@ -134,3 +187,7 @@ OpenCV on CPU and do not benefit from the GPU.
   caps never fire.
 - **`opencv-python` vs `opencv-python-headless`.** Colab preinstalls one already;
   do not install the other on top, it breaks the cv2 import.
+- **`onnxruntime` and `onnxruntime-gpu` must never both be installed.** With both
+  present ORT loads the CPU build, the segmenter silently runs on CPU, and GPU
+  memory sits near 0.2 GB. Section 2 uninstalls both before installing the GPU
+  build for exactly this reason.

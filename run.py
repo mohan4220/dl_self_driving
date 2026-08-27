@@ -39,12 +39,38 @@ def main() -> None:
     log = a.log or f"data/output/{stem}_control.jsonl"
     Path("data/output").mkdir(parents=True, exist_ok=True)
 
+    import torch, onnxruntime as ort
+    print("=== environment ===")
+    print(f"  torch          {torch.__version__}  cuda_available={torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"  gpu            {torch.cuda.get_device_name(0)}")
+    print(f"  onnxruntime    {ort.__version__}")
+    print(f"  ort providers  {ort.get_available_providers()}")
+    print()
     print(f"input   {a.video}")
     print(f"output  {out}")
     print(f"log     {log}")
     print(f"stride  {cfg['video']['stride']}   clip={'off' if a.no_clip else 'on'}\n")
 
     pipe = Pipeline(cfg, use_clip=not a.no_clip)
+
+    d = pipe.describe()
+    print("=== models ===")
+    print(f"  segmenter   {d['segmenter']}")
+    print(f"  detector    {d['detector']}")
+    print(f"  weather     {d['weather']}")
+    if torch.cuda.is_available():
+        on_gpu = [k for k in ("segmenter_device", "detector_device") if d[k] == "cuda"]
+        if len(on_gpu) < 2:
+            print()
+            print("  WARNING: a GPU is present but not every model is using it.")
+            if d["segmenter_device"] != "cuda":
+                print("    segmenter is on CPU -> install onnxruntime-gpu (and remove")
+                print("    plain onnxruntime), and point model.segmenter at the FP32")
+                print("    file: INT8 is a CPU optimisation and does not run on CUDA.")
+            if d["detector_device"] != "cuda":
+                print("    detector is on CPU -> check config model.device is not 'cpu'.")
+    print()
     stats = pipe.run(a.video, out, log, sim=a.sim, max_frames=a.frames)
 
     print("\n--- summary ---")
