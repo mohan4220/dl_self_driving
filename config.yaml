@@ -76,3 +76,6 @@ degrade:
 hud:
   log_lines: 5
   font_scale: 0.5
+
+signals:
+  min_sign_px: 22
