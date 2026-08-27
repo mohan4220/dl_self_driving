@@ -1,0 +1,78 @@
+model:
+  segmenter: models/twinlitenet_int8.onnx
+  segmenter_fp32: models/twinlitenet_fp32.onnx
+  detector: models/yolo11n.pt
+  clip: openai/clip-vit-base-patch32
+  onnx_threads: 4
+
+video:
+  stride: 2              # process every Nth frame
+  out_fps: 15
+
+camera:
+  # Inverse perspective mapping. Source points are in the 640x360 frame,
+  # clockwise from top-left of the trapezoid covering the road ahead.
+  seg_w: 640
+  seg_h: 360
+  ipm_src: [[250, 200], [390, 200], [610, 340], [30, 340]]
+  ipm_dst_m: [[-1.75, 30.0], [1.75, 30.0], [1.75, 5.0], [-1.75, 5.0]]
+  lane_width_m: 3.5
+  wheelbase_m: 2.7
+  cam_height_m: 1.35
+
+detect:
+  conf: 0.35
+  conf_lowvis: 0.20
+  imgsz: 640
+  classes: [0, 1, 2, 3, 5, 7, 9, 11, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+  # COCO ids: person, bicycle, car, motorcycle, bus, truck, traffic light,
+  # stop sign, cat, dog, horse, sheep, cow, elephant, bear, zebra, giraffe
+
+segment:
+  da_min_px_frac: 0.02   # below this, drivable mask is considered empty
+  ll_min_px_frac: 0.0015
+  fit_bands: 12          # horizontal bands used to sample lane pixels
+  fit_min_bands: 4       # fewer valid bands than this -> lane fit invalid
+
+weather:
+  clip_every: 15
+  labels: [clear, rain, fog, night, snow]
+  prompts:
+    clear: "a dashcam photo of a road on a clear sunny day"
+    rain:  "a dashcam photo of a road in heavy rain with wet reflections"
+    fog:   "a dashcam photo of a road in thick fog with low visibility"
+    night: "a dashcam photo of a road at night in the dark"
+    snow:  "a dashcam photo of a snow covered road in winter"
+  speed_cap_kmh:
+    clear: 999
+    rain: 60
+    fog: 40
+    night: 70
+    snow: 40
+  visibility_lowvis_below: 0.45
+
+planner:
+  follow_time_gap_s: 2.0
+  lane_change_gap_s: 3.0
+  indicator_lead_frames: 15
+  ebrake_ttc_s: 1.5
+  yield_ped_dist_m: 25.0
+  stop_line_dist_m: 20.0
+  overtake_side: left
+
+control:
+  lookahead_min_m: 6.0
+  lookahead_k: 0.6        # lookahead = min + k * v(m/s)
+  max_steer_deg: 35.0
+  pid: {kp: 0.9, ki: 0.12, kd: 0.05}
+  accel_max: 2.5          # m/s^2
+  decel_max: 5.0
+
+degrade:
+  freespace_speed_cap_kmh: 40
+  blind_speed_cap_kmh: 20
+  lowvis_gap_multiplier: 1.8
+
+hud:
+  log_lines: 5
+  font_scale: 0.5

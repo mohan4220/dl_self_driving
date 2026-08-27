@@ -1,0 +1,12 @@
+onnxruntime==1.29.0
+onnx
+ultralytics==8.4.128
+opencv-python
+numpy
+pyyaml
+transformers
+pillow
+rapidocr
+matplotlib
+tqdm
+pytest
