@@ -13,4 +13,3 @@ data/output/*
 !data/input/footage2.webm
 third_party/
 .pytest_cache/
-.superpowers/

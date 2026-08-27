@@ -1,6 +1,6 @@
 # All-Weather Self-Driving Car Simulation — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Steps use checkbox (`- [ ]`) syntax so progress can be tracked as each task is completed.
 
 **Goal:** Turn a dashcam video into an annotated video showing the steering angle, target speed, indicator state, and decision log a self-driving controller would produce, plus an optional top-down simulator window where a virtual car executes those commands.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, ONNX Runtime 1.29, ultralytics 8.4 (YOLO11n + ByteTrack), OpenCV 5.0, transformers (CLIP ViT-B/32), rapidocr 3.9, NumPy, PyYAML, pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-all-weather-self-driving-design.md`
+**Spec:** `docs/DESIGN.md`
 
 ## Global Constraints
 

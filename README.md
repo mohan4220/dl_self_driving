@@ -425,8 +425,8 @@ adverse-weather evidence comes from BDD100K stills, not video.
 |---|---|
 | [docs/RESULTS.md](docs/RESULTS.md) | every measurement, with methodology and caveats |
 | [docs/COLAB.md](docs/COLAB.md) | GPU runtime setup and gotchas |
-| `docs/superpowers/specs/` | the design spec, including rejected alternatives |
-| `docs/superpowers/plans/` | the full implementation plan |
+| [docs/DESIGN.md](docs/DESIGN.md) | the design spec, including rejected alternatives |
+| [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) | the full implementation plan |
 | `docs/figures/` | generated report figures + `metrics.json` |
 
 ## Credits
