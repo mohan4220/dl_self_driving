@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+data/input/*
+data/output/*
+!data/**/.gitkeep
+third_party/
+.pytest_cache/
+*.egg-info/
+.superpowers/
