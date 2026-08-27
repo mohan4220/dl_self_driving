@@ -24,9 +24,15 @@ class Segmenter:
     def __init__(self, model_path: str, threads: int = 4):
         so = ort.SessionOptions()
         so.intra_op_num_threads = threads
-        self.sess = ort.InferenceSession(
-            model_path, so, providers=["CPUExecutionProvider"]
-        )
+        # Use CUDA when the runtime actually offers it (Colab), otherwise CPU.
+        # Note the INT8 model is CPU-tuned: dynamic quantization gives no
+        # speedup on CUDA, so point config.model.segmenter at the FP32 file
+        # when running on a GPU runtime.
+        available = ort.get_available_providers()
+        providers = [p for p in ("CUDAExecutionProvider", "CPUExecutionProvider")
+                     if p in available]
+        self.sess = ort.InferenceSession(model_path, so, providers=providers)
+        self.provider = self.sess.get_providers()[0]
 
     def infer(self, bgr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Returns (drivable_mask, lane_mask), uint8 0/1, both 360x640."""
