@@ -94,13 +94,13 @@ Or mount Drive, which is better for anything over ~50 MB:
 
 ```python
 from google.colab import drive; drive.mount('/content/drive')
-!cp "/content/drive/MyDrive/clips/footage2.webm" data/input/
+!cp "/content/drive/MyDrive/clips/footage2.mp4" data/input/
 ```
 
 ## 5. Run
 
 ```python
-!python run.py --video data/input/footage2.webm --stride 4
+!python run.py --video data/input/footage2.mp4 --stride 2
 ```
 
 **Do not pass `--sim`.** It calls `cv2.imshow`, and Colab has no display — the
@@ -154,7 +154,7 @@ files.download('data/output/footage2_control.jsonl')
 ## 7. Report figures
 
 ```python
-!python -m tools.figures --video data/input/footage2.webm \
+!python -m tools.figures --video data/input/footage2.mp4 \
                         --log data/output/footage2_control.jsonl
 !cat docs/figures/metrics.json
 ```
@@ -197,5 +197,6 @@ OpenCV on CPU and do not benefit from the GPU.
   sits near 0.2 GB. The GPU wheel includes `CPUExecutionProvider` too, so install
   only that one.
 - **Use `requirements-gpu.txt`, not `requirements-cpu.txt`.** The CPU file pins
-  plain `onnxruntime`, and installing it after the GPU wheel clobbers the GPU
-  build. They exist as separate files precisely so this cannot happen by accident.
+  plain `onnxruntime`; installing it after the GPU wheel clobbers the GPU build.
+  The two files exist precisely so this cannot happen by accident. Each is
+  self-contained — install exactly one.

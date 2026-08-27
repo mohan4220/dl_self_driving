@@ -1,30 +1,44 @@
-# CUDA GPU install. Use this on Colab or any machine with an NVIDIA GPU.
+# ============================================================
+#  GPU INSTALL  --  use this on Colab or any CUDA machine
+# ============================================================
 #
 #   pip install -r requirements-gpu.txt
 #   python -c "import onnxruntime as o; print(o.get_available_providers())"
 #     -> CUDAExecutionProvider must appear in that list
 #
-# torch is NOT listed here. On Colab it is preinstalled with CUDA. Elsewhere,
-# install the build matching your CUDA version from https://pytorch.org first.
+# torch is deliberately not listed. Colab ships it with CUDA already; on your
+# own machine install the build matching your CUDA version from pytorch.org.
 #
-# TWO THINGS THAT WILL COST YOU THE GPU IF YOU SKIP THEM:
+# TWO THINGS THAT WILL COST YOU THE GPU IF YOU SKIP THEM
 #
-# 1. Never install plain `onnxruntime` alongside this. Both wheels ship the same
-#    onnxruntime/capi/*.so, so the second install overwrites the first while pip
-#    still lists both -- you silently land on whichever came last. This wheel is
-#    a superset: it provides CPUExecutionProvider as well, so you never need the
-#    other one. If in doubt:
-#        pip uninstall -y onnxruntime onnxruntime-gpu && pip install -r requirements-gpu.txt
+# 1. Never install plain `onnxruntime` alongside this. Both wheels ship the
+#    same onnxruntime/capi/*.so, so the second install overwrites the first
+#    while pip still lists both -- you silently land on whichever came last,
+#    the segmenter runs on CPU, and nvidia-smi shows ~0.2 GB used. This wheel
+#    is a superset: it provides CPUExecutionProvider too. To recover:
+#      pip uninstall -y onnxruntime onnxruntime-gpu
+#      pip install -r requirements-gpu.txt
 #
 # 2. Point the segmenter at the FP32 model. INT8 dynamic quantization emits
-#    ConvInteger/MatMulInteger ops the CUDA provider does not implement, so the
-#    INT8 model falls back to CPU even with this wheel installed:
-#        sed -i 's|segmenter: models/twinlitenet_int8.onnx|segmenter: models/twinlitenet_fp32.onnx|' config.yaml
+#    ConvInteger/MatMulInteger ops the CUDA provider does not implement, so
+#    the INT8 model falls back to CPU even with this wheel installed:
+#      sed -i 's|segmenter: models/twinlitenet_int8.onnx|segmenter: models/twinlitenet_fp32.onnx|' config.yaml
 #
-# If CUDAExecutionProvider does not appear, the ORT build wants a different CUDA
-# minor version than the host provides. Try onnxruntime-gpu==1.19.2, or accept
-# the segmenter on CPU -- YOLO and CLIP still use the GPU.
-
--r requirements-common.txt
+# If CUDAExecutionProvider still does not appear, the ORT build wants a
+# different CUDA minor version than the host has. Try onnxruntime-gpu==1.19.2,
+# or accept the segmenter on CPU -- YOLO and CLIP will still use the GPU.
 
 onnxruntime-gpu==1.29.0
+
+ultralytics==8.4.128
+lap==0.5.13          # ByteTrack linear-assignment solver; ultralytics auto-installs it on first .track() call
+onnx                 # only needed to inspect or requantize models, not for inference
+transformers         # CLIP ViT-B/32, zero-shot weather classification
+pillow               # CLIP image preprocessing
+rapidocr             # PP-OCR via ONNX; speed-limit digits. Package is `rapidocr` (v3), NOT `rapidocr_onnxruntime`
+opencv-python        # NOT -headless: cv2.imshow is needed for --sim and the per-module demos
+numpy
+pyyaml               # config.yaml
+matplotlib           # tools/figures.py
+tqdm
+pytest

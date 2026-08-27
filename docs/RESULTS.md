@@ -136,17 +136,23 @@ the sustained-load claim, and say which is which.
 
 ### Second clip: US rural road
 
-Source: `footage2.webm`, 862x484 landscape, 60 fps, 35.6 s. No crop needed.
-Processed at stride 4 (534 frames, ~15 fps effective).
+Source: `footage2.mp4`, 862x484 landscape, 30 fps, 55.6 s, 1668 frames. No crop
+needed. Processed at stride 4 (417 frames).
+
+The clip was supplied as VP9/WebM and transcoded to H.264 for the repo. That was
+not cosmetic: the WebM reported `Duration: N/A` and a frame count of -5.5e17, and
+it was variable-frame-rate, so `t = index / fps` was wrong and progress reporting
+had no usable total. The transcode is constant 30 fps with correct metadata, and
+the decoded frame count matches the container exactly.
 
 | Metric | UK motorway (clip 1) | US rural (clip 2) |
 |---|---|---|
-| Throughput | 515 ms/frame (1.94 FPS) | **367 ms/frame (2.72 FPS)** |
+| Throughput | 515 ms/frame (1.94 FPS) | **354 ms/frame (2.83 FPS)** |
 | Lane fit valid | 59% | **69%** |
 | Mean absolute steering | 4.4 deg | **2.5 deg** |
 | Target speed, mean | 26 km/h | **45.9 km/h** |
 | Objects per frame | 1.1 | 0.22 |
-| FSM | FOLLOW 60%, CHANGING 22% | **LANE_KEEP 92%, FOLLOW 8%** |
+| FSM | FOLLOW 60%, CHANGING 22% | **LANE_KEEP 91%, FOLLOW 9%, YIELD_PEDESTRIAN 0.2%** |
 
 The second clip is the better demo. Lane fitting succeeds more often because the
 road carries both a painted yellow centre line and a white edge line, steering

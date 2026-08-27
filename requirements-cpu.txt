@@ -1,15 +1,33 @@
-# CPU-only install. Use this on a machine with no NVIDIA GPU.
+# ============================================================
+#  CPU-ONLY INSTALL  --  use this on a machine with no NVIDIA GPU
+# ============================================================
 #
 #   python3 -m venv .venv && source .venv/bin/activate
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 #   pip install -r requirements-cpu.txt
 #
-# Install torch FIRST from that index URL. Listing torch here would pull the
-# default wheel, which bundles ~2.5 GB of CUDA libraries this install cannot use.
+# Install torch FIRST from that index URL. torch is deliberately not listed
+# below: the default wheel bundles ~2.5 GB of CUDA libraries a CPU-only box
+# cannot use.
 #
-# Keep config.yaml pointing at models/twinlitenet_int8.onnx -- INT8 dynamic
-# quantization is a CPU optimisation and is 5.4x faster than FP32 here.
-
--r requirements-common.txt
+# Keep config.yaml pointing at models/twinlitenet_int8.onnx here -- INT8
+# dynamic quantization is a CPU optimisation and runs 5.4x faster than FP32.
+#
+# Do NOT also install onnxruntime-gpu. Both wheels ship the same
+# onnxruntime/capi/*.so, so the second overwrites the first while pip still
+# lists both, and you silently get whichever came last.
 
 onnxruntime==1.29.0
+
+ultralytics==8.4.128
+lap==0.5.13          # ByteTrack linear-assignment solver; ultralytics auto-installs it on first .track() call
+onnx                 # only needed to inspect or requantize models, not for inference
+transformers         # CLIP ViT-B/32, zero-shot weather classification
+pillow               # CLIP image preprocessing
+rapidocr             # PP-OCR via ONNX; speed-limit digits. Package is `rapidocr` (v3), NOT `rapidocr_onnxruntime`
+opencv-python        # NOT -headless: cv2.imshow is needed for --sim and the per-module demos
+numpy
+pyyaml               # config.yaml
+matplotlib           # tools/figures.py
+tqdm
+pytest

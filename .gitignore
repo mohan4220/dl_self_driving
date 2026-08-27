@@ -9,7 +9,7 @@ __pycache__/
 data/input/*
 data/output/*
 !data/**/.gitkeep
-# bundled demo clip so the repo runs out of the box (US rural road, 35.6s)
-!data/input/footage2.webm
+# bundled demo clip so the repo runs out of the box (US rural road, 55.6s)
+!data/input/footage2.mp4
 third_party/
 .pytest_cache/
