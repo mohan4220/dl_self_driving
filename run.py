@@ -60,16 +60,28 @@ def main() -> None:
     print(f"  detector    {d['detector']}")
     print(f"  weather     {d['weather']}")
     if torch.cuda.is_available():
-        on_gpu = [k for k in ("segmenter_device", "detector_device") if d[k] == "cuda"]
-        if len(on_gpu) < 2:
+        providers = ort.get_available_providers()
+        if d["segmenter_device"] != "cuda":
             print()
-            print("  WARNING: a GPU is present but not every model is using it.")
-            if d["segmenter_device"] != "cuda":
-                print("    segmenter is on CPU -> install onnxruntime-gpu (and remove")
-                print("    plain onnxruntime), and point model.segmenter at the FP32")
-                print("    file: INT8 is a CPU optimisation and does not run on CUDA.")
-            if d["detector_device"] != "cuda":
-                print("    detector is on CPU -> check config model.device is not 'cpu'.")
+            print("  WARNING: a GPU is present but the segmenter is on CPU.")
+            if "CUDAExecutionProvider" not in providers:
+                print("    onnxruntime has no CUDA provider at all -> you have the CPU")
+                print("    wheel. Install onnxruntime-gpu and remove plain onnxruntime;")
+                print("    they share a binary and cannot coexist.")
+            else:
+                # The provider is listed but was not selected, which almost always
+                # means its shared library failed to load -- ORT logs that above.
+                print(f"    CUDA provider is listed but did not load. ORT {ort.__version__}")
+                print(f"    needs a CUDA major version matching the host "
+                      f"(torch reports CUDA {torch.version.cuda}).")
+                print("    onnxruntime-gpu <=1.22 is built for CUDA 12, >=1.23 for CUDA 13.")
+                print("    See the 'Require cuDNN/CUDA' line in the ORT error above.")
+            if "int8" in str(cfg["model"]["segmenter"]):
+                print("    ALSO: model.segmenter points at the INT8 file. INT8 emits")
+                print("    integer ops CUDA does not implement, so it stays on CPU even")
+                print("    with a working GPU provider. Switch to the FP32 model.")
+        if d["detector_device"] != "cuda":
+            print("  WARNING: detector is on CPU -> check config model.device is not 'cpu'.")
     print()
     stats = pipe.run(a.video, out, log, sim=a.sim, max_frames=a.frames)
 

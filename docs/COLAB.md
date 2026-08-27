@@ -48,23 +48,44 @@ print("ort providers:", ort.get_available_providers())
 `CUDAExecutionProvider` **must** appear in that provider list. If it does not,
 nothing below will use the GPU for segmentation.
 
-If it is missing, the usual cause is a CUDA/cuDNN mismatch with the ORT build.
-Check what ORT is complaining about:
+### The provider is listed but still does not work
 
-```python
-import onnxruntime as ort
-try:
-    ort.InferenceSession("models/twinlitenet_fp32.onnx",
-                         providers=["CUDAExecutionProvider"])
-    print("CUDA provider loads fine")
-except Exception as e:
-    print("CUDA provider failed:", e)
+This is the failure to expect, and it is genuinely misleading: ORT **lists**
+`CUDAExecutionProvider` and only fails when it tries to load the library.
+
+```
+[E:onnxruntime] Failed to load library libonnxruntime_providers_cuda.so
+  with error: libcublasLt.so.13: cannot open shared object file
+[W:onnxruntime] Failed to create CUDAExecutionProvider.
+  Require cuDNN 9.* and CUDA 13.*
 ```
 
-A `libcudnn` / `libcublas` error means the ORT build wants a different CUDA
-minor version than Colab has. Two workarounds: pin an older ORT
-(`pip install onnxruntime-gpu==1.19.2`), or accept the segmenter on CPU — YOLO
-and CLIP will still use the GPU, which is most of the win.
+**Cause: the ORT version is built for a different CUDA major version than the
+host has.** `onnxruntime-gpu` 1.23 and later target CUDA 13; Colab currently
+ships CUDA 12.x. So a recent ORT asks for `libcublasLt.so.13` and Colab only
+has `.so.12`.
+
+Check the host, then pick the matching wheel:
+
+```python
+import torch; print("host CUDA:", torch.version.cuda)     # e.g. 12.8
+```
+
+| Host CUDA | Wheel |
+|---|---|
+| 12.x | `onnxruntime-gpu==1.22.0` — the last CUDA 12 release, and what `requirements-gpu.txt` pins |
+| 13.x | `onnxruntime-gpu>=1.23` |
+
+```python
+!pip install -q --force-reinstall onnxruntime-gpu==1.22.0
+import onnxruntime as ort
+ort.InferenceSession("models/twinlitenet_fp32.onnx", providers=["CUDAExecutionProvider"])
+print("CUDA provider loads:", ort.get_available_providers())
+```
+
+If it still refuses, just leave the segmenter on CPU — the run completes anyway
+and YOLO and CLIP keep the GPU. But see the timing note below before assuming
+that is good enough.
 
 ## 3. Point the segmenter at FP32
 
@@ -166,6 +187,23 @@ has no packaging config, so a bare script invocation cannot resolve `from src...
 config to FP32, `fig1` compares FP32 against FP32 and the speedup collapses to
 1.0x. Generate that one figure on the laptop, where the comparison is meaningful.
 Everything else is fine to generate on Colab.
+
+## A warning about partial GPU use
+
+With the segmenter on CPU and only YOLO and CLIP on the GPU, **Colab can be
+slower than a laptop**. Measured on the bundled clip:
+
+| | Segmenter | Throughput |
+|---|---|---|
+| Laptop, 4 threads, no GPU | CPU, INT8 | **2.83 FPS** |
+| Colab T4, ORT CUDA broken | CPU, INT8 | 2.25 FPS |
+
+TwinLiteNet is the single heaviest stage at ~144 ms, and a T4 runtime only gives
+you **2 vCPUs** against a laptop's 4 threads. Accelerating the two cheaper models
+does not make up for running the expensive one on weaker CPU.
+
+So on Colab it is worth getting the CUDA provider working, not shrugging it off.
+Both fixes are required: the CUDA-12 wheel **and** the FP32 model.
 
 ## Expected timings
 

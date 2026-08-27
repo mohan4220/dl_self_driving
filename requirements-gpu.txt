@@ -24,11 +24,27 @@
 #    the INT8 model falls back to CPU even with this wheel installed:
 #      sed -i 's|segmenter: models/twinlitenet_int8.onnx|segmenter: models/twinlitenet_fp32.onnx|' config.yaml
 #
-# If CUDAExecutionProvider still does not appear, the ORT build wants a
-# different CUDA minor version than the host has. Try onnxruntime-gpu==1.19.2,
-# or accept the segmenter on CPU -- YOLO and CLIP will still use the GPU.
+# 3. The ORT version must match the host's CUDA MAJOR version. This is the
+#    most common failure and it is not obvious, because ORT still LISTS
+#    CUDAExecutionProvider and only fails when it tries to load the library:
+#
+#      Failed to load library libonnxruntime_providers_cuda.so with error:
+#      libcublasLt.so.13: cannot open shared object file
+#      Require cuDNN 9.* and CUDA 13.*
+#
+#    onnxruntime-gpu 1.23+ is built against CUDA 13. Colab currently ships
+#    CUDA 12.x (check: torch reports 2.x+cu128), so it needs a CUDA 12 build.
+#    1.22.0 is the last CUDA 12 release, which is why it is pinned below.
+#
+#    To check what your host has:
+#      python -c "import torch; print(torch.version.cuda)"
+#    CUDA 12.x -> onnxruntime-gpu==1.22.0 (pinned here)
+#    CUDA 13.x -> onnxruntime-gpu>=1.23
+#
+#    If neither works, the segmenter falls back to CPU on its own and the run
+#    still completes -- YOLO and CLIP keep using the GPU.
 
-onnxruntime-gpu==1.29.0
+onnxruntime-gpu==1.22.0   # CUDA 12 build; see note 3 above before changing
 
 ultralytics==8.4.128
 lap==0.5.13          # ByteTrack linear-assignment solver; ultralytics auto-installs it on first .track() call
