@@ -1,13 +1,29 @@
+# Install torch FIRST, separately, or pip pulls ~2.5 GB of CUDA wheels this
+# project cannot use. It is deliberately not listed here for that reason:
+#
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip install -r requirements.txt
+#
+# On Colab, torch+CUDA is preinstalled -- skip that first line, and swap
+# onnxruntime for onnxruntime-gpu (see docs/COLAB.md).
+
+# --- inference runtimes ---
 onnxruntime==1.29.0
 onnx
 ultralytics==8.4.128
 lap==0.5.13          # ByteTrack's linear-assignment solver; ultralytics auto-installs it on first .track() call
-opencv-python
+
+# --- perception ---
+transformers         # CLIP ViT-B/32, zero-shot weather classification
+pillow               # CLIP image preprocessing
+rapidocr             # PP-OCR via ONNX; speed-limit digits. NOTE: package is `rapidocr` (v3), not `rapidocr_onnxruntime`
+
+# --- core ---
+opencv-python        # NOT -headless: cv2.imshow is needed for --sim and the per-module demos
 numpy
-pyyaml
-transformers
-pillow
-rapidocr
-matplotlib
+pyyaml               # config.yaml
+
+# --- reporting / dev ---
+matplotlib           # tools/figures.py
 tqdm
 pytest
