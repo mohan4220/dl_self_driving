@@ -1,6 +1,7 @@
 onnxruntime==1.29.0
 onnx
 ultralytics==8.4.128
+lap==0.5.13          # ByteTrack's linear-assignment solver; ultralytics auto-installs it on first .track() call
 opencv-python
 numpy
 pyyaml
