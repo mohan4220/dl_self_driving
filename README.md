@@ -128,6 +128,10 @@ python -m src.sim                        # bicycle model trajectory
 
 ~2300 lines of Python. All tunable values live in `config.yaml`.
 
+**New to the code?** [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md) explains every
+file, the concepts behind each stage (homography, pure pursuit, PID, the bicycle
+model), and traces a single frame end to end through all eleven stages.
+
 ### The driving policy
 
 Finite state machine, strict priority — first match wins:
@@ -442,6 +446,7 @@ adverse-weather evidence comes from BDD100K stills, not video.
 
 | Document | Contents |
 |---|---|
+| **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)** | **start here** — every file explained, the full data flow, and the bugs worth learning from |
 | [docs/RESULTS.md](docs/RESULTS.md) | every measurement, with methodology and caveats |
 | [docs/COLAB.md](docs/COLAB.md) | GPU runtime setup and gotchas |
 | [docs/DESIGN.md](docs/DESIGN.md) | the design spec, including rejected alternatives |
